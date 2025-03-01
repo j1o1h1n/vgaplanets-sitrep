@@ -1,18 +1,20 @@
 """
 See https://help.planets.nu/API for the APi
 """
+import time
 import requests
 import sqlite3
 import json
 import logging
 import datetime
 
+from typing import NamedTuple
 from pathlib import Path
 
-logging.basicConfig(
-    level=logging.DEBUG,  # Set the logging level to DEBUG
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+
+logger = logging.getLogger(__name__)
+
+ONE_HOUR_SECS = 60 * 60
 
 LOAD_TURN = "http://api.planets.nu/game/loadturn"
 
@@ -31,7 +33,7 @@ TABLES = {
             game_id INTEGER PRIMARY KEY, 
             name TEXT NOT NULL,
             data JSON NOT NULL,
-            last_updated TEXT NOT NULL
+            meta JSON NOT NULL
         );""",
     "turns":
         """
@@ -44,7 +46,7 @@ TABLES = {
 }
 
 INSERT_GAME = """
-REPLACE INTO games (game_id, name, data, last_updated)
+REPLACE INTO games (game_id, name, meta, data)
 VALUES (?, ?, ?, ?);
 """
 
@@ -52,6 +54,30 @@ INSERT_TURN = """
 REPLACE INTO turns (game_id, turn, data)
 VALUES (?, ?, ?);
 """
+
+# minimum last_updated value where status is 2
+LAST_UPDATED = """
+select COALESCE(JSON_EXTRACT(meta, '$.last_updated'), 0) last_updated, 
+       JSON_EXTRACT(data, '$.status') status
+from games where status = 2"""
+
+class Score(NamedTuple):
+    turn_id: int
+    player_id: int
+    planets: int
+    planets_delta: int
+    starbases: int
+    starbases_delta: int
+    capital_ships: int
+    capital_ships_delta: int
+    civilian_ships: int
+    civilian_ships_delta: int
+    military_score: int
+    military_score_delta: int
+    score: int
+    score_delta: int
+    pp: int
+    pp_delta: int
 
 
 def configure_wal(conn: sqlite3.Connection) -> sqlite3.Connection:
@@ -84,7 +110,7 @@ def load_api_key():
 
 
 def save_api_key(account):
-    api_key_path = Path.home() / "vgap.apikey"
+    api_key_path = Path.home() / ".vgap.apikey"
     with open(api_key_path, 'w') as f:
         f.write(json.dumps(account))
         f.close()
@@ -97,14 +123,104 @@ def get_ts(td: datetime.timedelta=None) -> str:
     return dt.isoformat(" ", "seconds")
 
 
+def create_score(data: dict[str,int]) -> Score:
+    """
+    Creates a Score object from a given dictionary of game data.
+
+    Parameters:
+    - data (dict): Dictionary containing game state values.
+
+    Returns:
+    - Score: A named tuple representing the player's score for the turn.
+    """
+    return Score(
+        turn_id=data["turn"],
+        player_id=data["ownerid"],
+        planets=data["planets"],
+        planets_delta=data["planetchange"],
+        starbases=data["starbases"],
+        starbases_delta=data["starbasechange"],
+        capital_ships=data["capitalships"],
+        capital_ships_delta=data["shipchange"],
+        civilian_ships=data["freighters"],
+        civilian_ships_delta=data["freighterchange"],
+        military_score=data["militaryscore"],
+        military_score_delta=data["militarychange"],
+        score=data["inventoryscore"],
+        score_delta=data["inventorychange"],
+        pp=data["prioritypoints"],
+        pp_delta=data["prioritypointchange"]
+    )
+
+
+class Player:
+
+    def __init__(self, id, raceid, racename, username):
+        self.id = id
+        self.raceid = raceid
+        self.racename = racename
+        self.username = username
+
+    def __repr__(self):
+        return f"<Player id={self.id}, name={self.username}, race={self.racename}>"
+
+
+class Turn:
+
+    def __init__(self, turn_id, data):
+        self.turn_id = turn_id
+        self.data = data
+        self.rst = data['rst']
+
+    def planets(self, player_id=None):
+        """ Return all the planets owned by the specified player, or the current
+        player if no player_id specified. """
+        if player_id is None:
+            player_id = self.rst['player']['id']
+        return [p for p in self.rst['planets'] if p['ownerid'] == player_id]
+
+
+# game status codes
+STATUS_JOINING, STATUS_RUNNING, STATUS_FINISHED, STATUS_HOLS = range(1, 5)
+
 class Game:
 
-    def __init__(self, data):
-        self.game_id = data["game_id"]
-        self.game_name = data["name"]
+    def __init__(self, game_id, name, meta, data, turns):
+        self.game_id = game_id
+        self.name = name
+        self.meta = meta
+        self.data = data
+        self.turns = turns
+        if self.turns:
+            turn = self.turn()
+            self.races = {r['id']:r for r in turn.rst['races']}
+            self.players = {p['id']:Player(p['id'], p['raceid'], 
+                                           self.races[p['raceid']]['name'],
+                                           p['username'])
+                            for p in turn.rst['players']}
+            if 0 in self.races:
+                del self.races[0]
+            if 0 in self.players:
+                del self.players[0]
+
+    def turn(self, turn_id=None):
+        """ Return the given turn, or latest if no turn specified """
+        if turn_id is None:
+            turn_id = max(self.turns.keys())
+        return self.turns[turn_id]
+
+    def scores(self) -> dict[int,dict[int,Score]]:
+        res = {}
+        for player_id in self.players:
+            res[player_id] = {}
+        for turn in self.turns.values():
+            for data in turn.rst['scores']:
+                score = create_score(data)
+                res[score.player_id][score.turn_id] = score
+        return res
 
 
-class Planets:
+class PlanetsDB:
 
     def __init__(self, db_file):
         self.db_file = db_file
@@ -157,33 +273,39 @@ class Planets:
         finally:
             cursor.close()
 
-    def update(self):
-        if not self.load_games():
+    def update(self, force_update=False):
+        if not self.update_games(force_update):
             return
         cursor = self.conn.cursor()
         try:
             for game in self.games():
-                game_id, latest_turn = game["game_id"], game["latest_turn"]
-                cursor.execute("""
-                    SELECT turn
-                    FROM turns
-                    WHERE game_id = ?
-                """, (game_id,))
-                existing_turns = {row[0] for row in cursor.fetchall()} 
-                # Find missing turns
-                missing_turns = set(range(1, latest_turn + 1)) - existing_turns
-                logging.debug(f"existing: {existing_turns}, fetching missing turns: {missing_turns}")
-                if 2 in missing_turns:
-                    # FIXME host seems to be missing turn 2
-                    missing_turns.remove(2)
-                # Load each missing turn
-                for turn in sorted(missing_turns):
-                    self.load_turn(game_id, turn)
+                latest = game.data['turn']
+                missing = {t for t in range(1, latest+1) if t not in game.turns}
+                unavail = game.meta.get('unavailable_turns', [])
+                for t in unavail:
+                    missing.discard(t)
+                if not missing:
+                    continue
+                logger.info(f"loading turns {missing} for {game.name}")
+                for turn_id in missing:
+                    if not self.update_turn(game.game_id, turn_id):
+                        unavail.append(turn_id)
+                unavail = list(set(unavail))
+                unavail.sort()
+                game.meta['unavailable_turns'] = unavail
+                cursor.execute("update games set meta = json(?) where game_id = ?", (json.dumps(game.meta), game.game_id))
             self.conn.commit()
         finally:
             cursor.close()        
 
-    def load_games(self, force_update=False) -> bool:
+    def last_updated(self) -> int:
+        cursor = self.conn.cursor()
+        try:
+            return cursor.execute(LAST_UPDATED).fetchone()[0] or 0
+        finally:
+            cursor.close()
+
+    def update_games(self, force_update=False) -> bool:
         """
         Update the games table with latest information for each game.
 
@@ -192,97 +314,94 @@ class Planets:
         """
         cursor = self.conn.cursor()
         try:
-            cursor.execute("select min(last_updated) from games")
-            last_updated = cursor.fetchone()[0]
-            if not force_update and last_updated > get_ts(datetime.timedelta(hours=-1)):
-                logging.debug(f"games last updated {last_updated}, skipping refresh")
+            last_updated = self.last_updated()
+            now = int(time.time())
+            ref_ts = now - ONE_HOUR_SECS
+            logger.info(f"load_games last_updated {last_updated}, comparison ts {ref_ts}")
+            if not force_update and last_updated and last_updated > ref_ts:
+                logging.info(f"games last updated {last_updated}, skipping refresh")
                 return False
+
+            existing_meta = {}
+            cursor.execute("select game_id, meta from games")
+            for row in cursor:
+                existing_meta[row[0]] = json.loads(row[1])
+            
             username = self.account['username']
             req = requests.get(f"http://api.planets.nu/games/list?username={username}&scope=1")
             games = req.json()
             for game in games:
                 game_id = game['id']
                 game_name = game['name']
-                game_json = json.dumps(game)  # Convert game dictionary to JSON string
-                cursor.execute(INSERT_GAME, (game_id, game_name, game_json, get_ts()))
+                meta = existing_meta.get(game_id, {})
+                meta['last_updated'] = now
+                meta = json.dumps(meta)
+                data = json.dumps(game)
+                cursor.execute(INSERT_GAME, (game_id, game_name, meta, data))
             self.conn.commit()
             return True
         finally:
             cursor.close()
 
-    def load_turn(self, game_id, turn=None):
-        """ Load the given turn for the given game. """
-        cursor = self.conn.cursor()
-        try:
-            req_data = dict(gameid=game_id, apikey=self.account['apikey'])
-            if turn is not None:
-                req_data['turn'] = turn
-            req = requests.post("http://api.planets.nu/game/loadturn", data=req_data)
-            data = req.json()
-            rst = data['rst']
+    def update_turn(self, game_id, turn=None) -> bool:
+        """ Update the turn information for the given turn from the server. """
+        req_data = dict(gameid=game_id, apikey=self.account['apikey'])
+        if turn is not None:
+            req_data['turn'] = turn
+        req = requests.post("http://api.planets.nu/game/loadturn", data=req_data)
+        data = req.json()
+        if not data['success']:
+            logger.warn(f"update_turn game_id={game_id}, turn={turn}: {data['error']}")
+            return False
+
+        rst = data['rst']
+        if turn is None:
             turn = rst['game']['turn']
 
-            # Serialize the turn data into JSON format
-            turn_data_json = json.dumps(data)
-
+        # Serialize the turn data into JSON format
+        turn_data_json = json.dumps(data)
+        
+        cursor = self.conn.cursor()
+        try:
             # Execute the insert query
             cursor.execute(INSERT_TURN, (game_id, turn, turn_data_json,))
             self.conn.commit()
         finally:
             cursor.close()
 
-    def games(self):
-        """ Returns a list of dict(name, game_id, latest_turn) """
+    def games(self) -> list[Game]:
+        """ Returns a list of Game """
         query = """
         SELECT 
             g.name, 
-            g.game_id, 
-            CAST(JSON_EXTRACT(g.data, '$.turn') AS INTEGER) AS latest_turn
+            g.game_id,
+            g.meta,
+            g.data
         FROM games g
         ORDER BY g.name;
         """
-
+        ret = []
         cursor = self.conn.cursor()
         try:
             cursor.execute(query)
             rows = cursor.fetchall()
             for row in rows:
-                name, game_id, latest_turn = row
-                yield dict(name=name, game_id=game_id, latest_turn=latest_turn)
+                name, game_id, meta, data = row
+                meta = json.loads(meta)
+                data = json.loads(data)
+                ret.append(Game(game_id, name, meta, data, self.turns(game_id)))
+            return ret
         finally:
             cursor.close()
 
-    def turn(self, game_id, turn):
-        """
-        Retrieve the turn data for a specific game and turn.
+    def game(self, game_id_or_name) -> Game:
+        """ Returns a Game """
+        games = [g for g in self.games() if game_id_or_name in [g.game_id, g.name]]
+        if len(games) == 0:
+            raise KeyError(game_id_or_name)
+        return games[0]
 
-        Parameters:
-            game_id (int): The ID of the game.
-            turn (int): The turn number to retrieve.
-
-        Returns:
-            dict: The turn data as a dictionary, or None if not found.
-        """
-        query = """
-        SELECT data
-        FROM turns
-        WHERE game_id = ? AND turn = ?;
-        """
-
-        cursor = self.conn.cursor()
-        try:
-            cursor.execute(query, (game_id, turn))
-            row = cursor.fetchone()
-            if row:
-                turn_data = json.loads(row[0])  # Deserialize JSON data
-                return turn_data
-            else:
-                logging.error(f"No data found for game_id={game_id}, turn={turn}")
-                return None
-        finally:
-            cursor.close()
-
-    def turns(self, game_id):
+    def turns(self, game_id) -> dict[int, Turn]:
         """ Load all turns """
         query = """
         SELECT data
@@ -293,59 +412,12 @@ class Planets:
 
         cursor = self.conn.cursor()
         try:
-            turns = []
+            turns = {}
             cursor.execute(query, (game_id,))
             for row in cursor:
                 turn_data = json.loads(row[0])
-                turns.append(turn_data)
+                turn_id = turn_data['rst']['game']['turn']
+                turns[turn_id] = Turn(turn_id, turn_data)
             return turns
         finally:
             cursor.close()        
-
-    def milscore(self, game_id, username):
-        """
-        Print the military scores for a specific player by username for each turn in a game.
-
-        Parameters:
-            game_id (int): The ID of the game.
-            username (str): The username of the player.
-        """
-        query = """
-        SELECT turn, data
-        FROM turns
-        WHERE game_id = ?
-        ORDER BY turn ASC;
-        """
-        cursor = self.conn.cursor()
-        try:
-            cursor.execute(query, (game_id,))
-            rows = cursor.fetchall()
-
-            #print(f"{'Turn':<10} {'Military Score':<15} {'Change':<10} {'Warships':<10} {'+/-':<4} ")
-            #print("-" * 40)
-
-            player_id = None
-
-            for turn, data_json in rows:
-                turn_data = json.loads(data_json)  # Deserialize JSON
-                if player_id is None:
-                    # Find player ID by username
-                    players = turn_data['rst']['players']
-                    for player in players:
-                        if player['username'].lower() == username.lower():
-                            player_id = player['id']
-                            break
-                    if player_id is None:
-                        #logging.debug(f"Player '{username}' not found in turn {turn_data['rst']['game']['turn']}.")
-                        continue
-
-                # Extract the military score for the player's ID
-                scores = turn_data['rst']['scores']
-                for score in scores:
-                    if score['ownerid'] == player_id:
-                        #print(f"{turn:<10} {score['militaryscore']:<15} {score['militarychange']:<10} {score['capitalships']:<10} {score['shipchange']:<4}")
-                        yield turn, score['militaryscore'], score['militarychange'], score['capitalships'] ,score['shipchange']
-                        break
-
-        finally:
-            cursor.close()
