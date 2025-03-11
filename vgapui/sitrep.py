@@ -203,7 +203,19 @@ class SituationReport(App):
                 rows.append(cols)
                 rows.extend(data)
             case "economic":
-                pass
+                cols = ['Sector', 'Planet', 'MCr', 'Supplies', 'Neutronium', 
+                        'Duranium', 'Tritanium', 'Molybendeum']
+                keys = ['megacredits', 'supplies', 'neutronium', 'duranium', 
+                        'tritanium', 'molybdenum']
+                make_rec = lambda d: [d[k] for k in keys]
+                turn = self.game.turn()
+                sec_map = {p_id:i+1 for i, sector in enumerate(turn.sectors()) for p_id in sector}
+                planets = turn.planets(turn.player_id)
+                data = sorted([(f"S{sec_map.get(p['id'], 0)}", f"P{p['id']}-{p['name']}",
+                                *make_rec(p)) for p in planets])
+
+                rows.append(cols)
+                rows.extend(data)
         if rows:
             racename = self.game.players[player_id].racename if player_id else ""
             self.push_screen(ReportTableScreen(rows, racename=racename))

@@ -7,10 +7,12 @@ import sqlite3
 import json
 import logging
 import datetime
+import math
 
-from typing import NamedTuple
+from typing import NamedTuple, Any, Dict, List, Tuple
 from pathlib import Path
 
+import vgapui.space
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +58,10 @@ VALUES (?, ?, ?);
 """
 
 # minimum last_updated value where status is 2
-LAST_UPDATED = """
-select COALESCE(JSON_EXTRACT(meta, '$.last_updated'), 0) last_updated, 
-       JSON_EXTRACT(data, '$.status') status
+LAST_UPDATED = """select COALESCE(JSON_EXTRACT(meta, '$.last_updated'), 0) last_updated, 
+JSON_EXTRACT(data, '$.status') status
 from games where status = 2"""
+
 
 class Score(NamedTuple):
     turn_id: int
@@ -171,13 +173,25 @@ class Turn:
         self.turn_id = turn_id
         self.data = data
         self.rst = data['rst']
+        self.player_id = self.rst['player']['id']
 
     def planets(self, player_id=None):
+        """ Return all the planets owned by the specified player, or all planets
+        if no player_id specified. """
+        if player_id is None:
+            return self.rst['planets']
+        return [p for p in self.rst['planets'] if p['ownerid'] == player_id]
+
+    def starbases(self, player_id=None):
         """ Return all the planets owned by the specified player, or the current
         player if no player_id specified. """
         if player_id is None:
-            player_id = self.rst['player']['id']
-        return [p for p in self.rst['planets'] if p['ownerid'] == player_id]
+            return self.rst['starbases']
+        return [s for s in self.rst['starbases'] if s['ownerid'] == player_id]
+
+    def sectors(self):
+        bottom_left, top_right = vgapui.space.infer_toroidal_map_settings(self.rst['settings'])
+        return vgapui.space.build_cliques(self.planets(), vgapui.space.MAX_DIST, bottom_left=bottom_left, top_right=top_right)
 
 
 # game status codes
@@ -400,6 +414,15 @@ class PlanetsDB:
         if len(games) == 0:
             raise KeyError(game_id_or_name)
         return games[0]
+
+    def save(self, game: Game):
+        cursor = self.conn.cursor()
+        try:
+            meta = json.dumps(game.meta)
+            data = json.dumps(game.data)
+            cursor.execute(INSERT_GAME, (game.game_id, game.name, meta, data))
+        finally:
+            cursor.close()
 
     def turns(self, game_id) -> dict[int, Turn]:
         """ Load all turns """
