@@ -43,16 +43,16 @@ class PlanetColony(NamedTuple):
     supplies: int
     factories: int
     mines: int
-    clans: int # was colonist_population
-    nativeclans: int  # was native_population
-    temp: int # was planet_temperature
-    colonisttaxrate: int # was colonist_tax
-    nativetaxrate: int # was native_tax
-    colonisthappypoints: int # was colonist_happiness
-    nativehappypoints: int  # was native_happiness
-    colonistracename: str  # was colonist_race # e.g., "Fed", "Lizard", "Bird Man", etc.
-    nativeracename: str # was native_race  # e.g., "Siliconoid", "Amorphous", etc.
-    nativegovernment: str # was native_govt
+    clans: int
+    nativeclans: int
+    temp: int
+    colonisttaxrate: int
+    nativetaxrate: int
+    colonisthappypoints: int
+    nativehappypoints: int
+    colonistracename: str # e.g., "Fed", "Lizard", "Bird Man", etc.
+    nativeracename: str  # e.g., "Siliconoid", "Amorphous", etc.
+    nativegovernment: str
 
 
 def build_planet_resources(turn, planet_id) -> PlanetResources:
@@ -255,18 +255,18 @@ def get_taxation_warnings(colony: PlanetColony, max_colonist_population: int) ->
     warnings = []
 
     # Civil War Condition
-    if colony.colonist_happiness < 0 or colony.native_happiness < 0:
+    if colony.colonisthappypoints < 0 or colony.nativehappypoints < 0:
         warnings.append("Civil war! Large population losses expected.")
     else:
         # Rioting Threshold
-        if colony.colonist_happiness < 30:
+        if colony.colonisthappypoints < 30:
             warnings.append("Colonists are rioting! Economic and population growth halted.")
 
-        if colony.native_happiness < 30:
+        if colony.nativehappypoints < 30:
             warnings.append("Natives are rioting! Economic and population growth halted.")
 
     # Overpopulation Warnings
-    if colony.colonist_population > max_colonist_population:
+    if colony.clans > max_colonist_population:
         warnings.append("Colonist population exceeds maximum planetary capacity.")
 
         if colony.supplies == 0:
@@ -281,7 +281,7 @@ def update_colonist_happiness(colony: PlanetColony, hiss_effect: int) -> int:
 
     Colonists:
 
-    (New Happiness) = (Old Happiness) + TRUNC((1000 - SQRT(Colonist Clans) - 80 * (Colonist Tax Rate) - ABS(BaseTemp - Temperature) * 3 - (Factories + Mines) / 3 ) /100) 
+    (New Happiness) = (Old Happiness) + TRUNC((1000 - SQRT(Colonist Clans) - 80 * (Colonist Tax Rate) - ABS(BaseTemp - Temperature) * 3 - (Factories + Mines) / 3 ) /100)
 
     Parameters:
     - colony (PlanetColony): The current state of the planetary colony.
@@ -290,12 +290,12 @@ def update_colonist_happiness(colony: PlanetColony, hiss_effect: int) -> int:
     Returns:
     - int: The change in colonist happiness.
     """
-    tax, population, race = colony.colonist_tax, colony.colonist_population, colony.colonist_race
+    tax, population, race = colony.colonisttaxrate, colony.clans, colony.colonistracename
 
     population_penalty = math.sqrt(population)
     tax_penalty = 80 * tax
-    temperature_base = 100 if colony.colonist_race == "Crystal" else 50
-    temperature_penalty = abs(temperature_base - colony.planet_temperature) * 3
+    temperature_base = 100 if race == "Crystal" else 50
+    temperature_penalty = abs(temperature_base - colony.temp) * 3
     infrastructure_penalty = (colony.factories + colony.mines) / 3
 
     return hiss_effect + math.trunc((1000 - population_penalty - tax_penalty - temperature_penalty - infrastructure_penalty) / 100)
@@ -306,8 +306,9 @@ def update_native_happiness(colony: PlanetColony, hiss_effect: int, nebula_bonus
     Calculates the change in native happiness based on population, taxation, temperature, and infrastructure.
 
     Natives:
-    
-    (New Happiness) = (Old Happiness) + TRUNC((1000 - SQRT(Native Clans) - (Native Tax Rate * 85) - TRUNC((Factories + Mines) / 2) - (50 * (10 - Native Government Level))) / 100) + (Native Race Bonus) + (Nebula Bonus) 
+
+    (New Happiness) = (Old Happiness) + TRUNC((1000 - SQRT(Native Clans) - (Native Tax Rate * 85) - TRUNC((Factories + Mines) / 2) - (5
+Bonus) + (Nebula Bonus)
 
     Parameters:
     - colony (PlanetColony): The current state of the planetary colony.
@@ -316,12 +317,12 @@ def update_native_happiness(colony: PlanetColony, hiss_effect: int, nebula_bonus
     Returns:
     - int: The change in colonist happiness.
     """
-    tax, population, race = colony.native_tax, colony.native_population, colony.native_race
+    tax, population, race = colony.nativetaxrate, colony.nativeclans, colony.nativeracename
 
     population_penalty = math.sqrt(population)
     tax_penalty = 85 * tax
     infrastructure_penalty = (colony.factories + colony.mines) / 2
-    government_penalty = 50 * (10 - colony.native_govt)
+    government_penalty = 50 * (10 - int(colony.nativegovernment))
 
     happiness_change = hiss_effect + math.trunc((1000 - population_penalty - tax_penalty - infrastructure_penalty - government_penalty) / 100)
 
@@ -343,17 +344,16 @@ def calculate_native_tax_income(colony: PlanetColony) -> int:
     Returns:
     - int: The calculated native tax income.
     """
-    if colony.native_race == "Amorphous" or colony.native_race == "none":
+    if colony.nativeracename == "Amorphous" or colony.nativeracename == "none":
         return 0  # Amorphous natives and no natives generate no tax income.
 
-    base_income = colony.native_population / 100
-    # The Borg can only earn taxes at a maximum of 20%, even if a higher tax rate is set.
-    tax_rate = min(20, colony.native_tax) if colony.colonist_race == "Borg" else colony.native_tax
+    base_income = colony.nativeclans / 100
+    tax_rate = min(20, colony.nativetaxrate) if colony.colonistracename == "Cyborg" else colony.nativetaxrate
 
-    native_tax_income = round(base_income * (tax_rate / 10) * (native_government / 5))
+    native_tax_income = round(base_income * (tax_rate / 10) * (int(colony.nativegovernment) / 5))
 
     # Tax income cannot exceed the number of colonists present.
-    return min(colony.colonist_population, native_tax_income)
+    return min(colony.clans, native_tax_income)
 
 
 def update_colony(colony: PlanetColony, hiss_effect=0, nebula_bonus=False) -> tuple[PlanetColony, list[str]]:
@@ -371,25 +371,25 @@ def update_colony(colony: PlanetColony, hiss_effect=0, nebula_bonus=False) -> tu
     def max_hiss_effect(happiness: int, hiss_effect: int) -> int:
         return min(100 - happiness, hiss_effect)
 
-    colonist_hiss_effect = max_hiss_effect(colony.colonist_happiness, hiss_effect)
-    native_hiss_effect = max_hiss_effect(colony.native_happiness, hiss_effect)
+    colonist_hiss_effect = max_hiss_effect(colony.colonisthappypoints, hiss_effect)
+    native_hiss_effect = max_hiss_effect(colony.nativehappypoints, hiss_effect)
 
     # Happiness Change
-    colonist_happiness = min(100, colony.colonist_happiness + update_colonist_happiness(colony, colonist_hiss_effect))
-    native_happiness = min(100, colony.native_happiness + update_native_happiness(colony, native_hiss_effect, nebula_bonus))
+    new_colonist_happiness = min(100, colony.colonisthappypoints + update_colonist_happiness(colony, colonist_hiss_effect))
+    new_native_happiness = min(100, colony.nativehappypoints + update_native_happiness(colony, native_hiss_effect, nebula_bonus))
 
     # Supplies & Income Calculation
-    colonist_tax_income = round(colony.colonist_population / 100 * colony.colonist_tax / 10)
+    colonist_tax_income = round(colony.clans / 100 * colony.colonisttaxrate / 10)
     native_tax_income = calculate_native_tax_income(colony)
 
-    if colonist_happiness <= 30:
+    if new_colonist_happiness <= 30:
         colonist_tax_income = 0
-    if native_happiness <= 30:
+    if new_native_happiness <= 30:
         native_tax_income = 0
 
-    if colony.native_race == "Insectoid":
+    if colony.nativeracename == "Insectoid":
         native_tax_income *= 2
-    if colony.colonist_race == "Federation":
+    if colony.colonistracename == "Fed":
         native_tax_income *= 2
         colonist_tax_income *= 2
     tax_income = min(5000, native_tax_income + colonist_tax_income)
@@ -399,69 +399,134 @@ def update_colony(colony: PlanetColony, hiss_effect=0, nebula_bonus=False) -> tu
     native_max_population = 0
 
     # Borg Assimilation
-    if colony.colonist_race == "Borg" and colony.native_race != "Amorphous":
-        assimilation_rate = 0.01  # Assume 1% assimilation rate
-        colonist_growth = min(colony.colonist_population * assimilation_rate, colony.native_population * assimilation_rate)
+    if colony.colonistracename == "Cyborg" and colony.nativeracename != "Amorphous":
+        assimilation_rate = 1.0  # 100%
+        colonist_growth = min(colony.clans * assimilation_rate, colony.nativeclans * assimilation_rate)
         native_growth = -colonist_growth
 
     # Colonist Growth Conditions (Happiness ≥ 70)
-    if colony.colonist_happiness >= 70:
-        if colony.colonist_race == "Crystal":
-            growth_formula = (colony.planet_temperature ** 2) / 4000
+    if colony.colonisthappypoints >= 70:
+        if colony.colonistracename == "Crystalline":
+            growth_rate = (colony.temp ** 2) / 4000
         else:
-            if 15 <= colony.planet_temperature <= 84:
-                growth_formula = math.sin(math.pi * ((100 - colony.planet_temperature) / 100))
+            if 15 <= colony.temp <= 84:
+                growth_rate = math.sin(math.pi * ((100 - colony.temp) / 100))
             else:
-                growth_formula = 0
+                growth_rate = 0
 
-        colonist_growth += round(
-            growth_formula * (colony.colonist_population / 20) * (5 / (colony.colonist_tax + 5))
-        )
-        colonist_growth = math.trunc(colonist_growth * (phost_growth_rate / 100))
+        pop = (colony.clans / 20)
+        tax = (5 / (colony.colonisttaxrate + 5))
+        colonist_growth += round(growth_rate * pop * tax)
+        colonist_growth = math.trunc(colonist_growth)
 
     # Native Growth Conditions (Happiness ≥ 70)
-    if colony.native_happiness >= 70:
-        if colony.native_race == "Siliconoid":
-            native_max_population = colony.planet_temperature * 1000
-            native_growth = round(
-                (colony.planet_temperature / 100) * (colony.native_population / 25) * (5 / (colony.native_tax + 5))
-            )
+    if colony.nativehappypoints >= 70:
+        if colony.nativeracename == "Siliconoid":
+            native_max_population = colony.temp * 1000
+            native_growth_rate = (colony.temp / 100)
         else:
-            native_max_population = round(math.sin(math.pi * ((100 - colony.planet_temperature) / 100)) * 150000)
-            native_growth = round(
-                math.sin(math.pi * ((100 - colony.planet_temperature) / 100)) * (colony.native_population / 25) * (5 / (colony.native_tax + 5))
-            )
+            native_max_population = round(math.sin(math.pi * ((100 - colony.temp) / 100)) * 150000)
+            native_growth_rate = math.sin(math.pi * ((100 - colony.temp) / 100))
+
+        pop = (colony.nativeclans / 20)
+        tax = (5 / (colony.nativetaxrate + 5))
+        native_growth += round(native_growth_rate * pop * tax)
 
     # Large native population reduces growth
-    if colony.native_population > 66000:
+    if colony.nativeclans > 66000 and native_growth > 0:
         native_growth = round(native_growth / 2)
 
     # Ensure native growth does not exceed max population
-    native_growth = min(native_growth, native_max_population - colony.native_population)
+    native_growth = min(native_growth, native_max_population - colony.nativeclans)
 
     # Non-Borg natives cannot have negative growth
-    if colony.colonist_race != "Borg":
+    if colony.colonistracename != "Cyborg":
         native_growth = max(0, native_growth)
 
     # Amorphous natives consume colonists
-    if colony.native_race == "Amorphous":
-        colonist_growth -= max(5, 100 - colony.native_happiness)
+    if colony.nativeracename == "Amorphous":
+        colonist_growth -= max(5, 100 - colony.nativehappypoints)
 
-    # Update Population with Growth
+    colonist_cur_max_pop = -1
+    climate_death_rate = 0.1
+    if colony.colonistracename == "Crystalline":
+        # Crystaline formula (likes 100° planets)
+        colonist_abs_max_pop = round(colony.temp * 1000);        
+    else:
+        # Non-Crystaline formula (likes 50° planets)
+        colonist_abs_max_pop = round(math.sin(math.pi * ((100 - colony.temp) / 100)) * 100000);
+        if colony.temp > 84:
+            colonist_abs_max_pop = math.trunc((20099.9 - (200 * colony.temp)) * climate_death_rate)
+            colonist_cur_max_pop = colony.clans - math.trunc(colony.clans * climate_death_rate) - 2 * (100 - colony.temp)
+        elif colony.temp < 15:
+            colonist_abs_max_pop = math.trunc((299.9 + (200 * colony.temp)) * climate_death_rate)
+            colonist_cur_max_pop = colony.clans - math.trunc(colony.clans * climate_death_rate) - 2 * (1 + colony.temp)
+    if colony.temp <= 19 and colony.colonistracename == "Rebels":
+        # Rebels can have up to 90,000 clans (9 million colonists) on any planet 
+        # with a temperature of 19 degrees or less
+        colonist_abs_max_pop = max(colonist_abs_max_pop, 90000);
+    colonist_cur_max_pop = max(colonist_abs_max_pop, colonist_cur_max_pop)
+    if colony.colonistracename in ["Fury", "Robots", "Rebels", "Colonies"]:
+        colonist_abs_max_pop = max(colonist_abs_max_pop, 60)
+    if colonist_cur_max_pop == -1:
+        colonist_cur_max_pop = colonist_abs_max_pop
+
+    # update supplies
+    new_supplies = colony.factories
+    if colony.nativeracename == "Bovinoid":
+        new_supplies += min(colony.clans, math.trunc(colony.nativeclans / 100))
+
+    # If the planet/planetoid has more population that the maximum, the excess population
+    # will either need to have supplies present, or some of them will die.
+
+    # The number of clans that can be supported by supplies can be calculated as follows:
+    #    (Clans Supported By Supplies) = ROUND((Planet Supplies) / 4)
+    clans_supported_by_supplies = round(colony.supplies / 4)
+    colonist_cur_max_pop = colonist_abs_max_pop + clans_supported_by_supplies
+    supplies_consumed = 0
+    if colony.clans > colonist_cur_max_pop:
+        clans_killed = math.ceil((colony.clans - colonist_cur_max_pop) / 10)
+        colonist_growth = -clans_killed
+        supplies_consumed = 1 + math.trunc((colony.clans - colonist_cur_max_pop) / 400)
+
+    if colonist_growth > 0 and colony.clans > colonist_abs_max_pop:
+        colonist_growth = 0
+
+    # civil war
+    if new_colonist_happiness < 0 or new_native_happiness < 0:
+        # A number of colonists and natives are killed when either natives or 
+        # colonists are at civil war.
+        # This means that if colonists are in civil war they kill both colonists 
+        # and natives; when natives are in civil war they kill both natives and colonists.
+        # For each turn that natives and/or colonists are in civil war, 30% of 
+        # the population plus an additional 100 clans (of both the native and 
+        # the colonist population) are killed.
+        # Amorphous natives are not killed during civil wars.
+        colonist_growth -= math.round(colony.clans * 0.3) + 100
+        if colony.nativeracename != "Amorphous":
+            native_growth -= math.round(colony.nativeclans * 0.3) + 100
+
+    # update pops, supplies, happiness
+    new_megacredits = max(0, colony.megacredits + tax_income)
+    new_supplies = max(0, colony.supplies + new_supplies - supplies_consumed)
+    new_colonist_clans = max(0, colony.clans + colonist_growth)
+    new_native_clans = max(0, colony.nativeclans + native_growth)
+
     updated_colony = PlanetColony(
         megacredits=new_megacredits,
         supplies=new_supplies,
         factories=colony.factories,
         mines=colony.mines,
-        colonist_population=colony.colonist_population + new_colonist_growth,
-        native_population=colony.native_population + new_native_growth,
-        planet_temperature=colony.planet_temperature,
-        colonist_tax=colony.colonist_tax,
-        native_tax=colony.native_tax,
-        colonist_happiness=new_colonist_happiness,
-        native_happiness=new_native_happiness,
-        colonist_race=colony.colonist_race,
-        native_race=colony.native_race
+        clans=new_colonist_clans,
+        nativeclans=new_native_clans,
+        temp=colony.temp,
+        colonisttaxrate=colony.colonisttaxrate,
+        nativetaxrate=colony.nativetaxrate,
+        colonisthappypoints=new_colonist_happiness,
+        nativehappypoints=new_native_happiness,
+        colonistracename=colony.colonistracename,
+        nativeracename=colony.nativeracename,
+        nativegovernment=colony.nativegovernment
     )
 
     return updated_colony, warnings
