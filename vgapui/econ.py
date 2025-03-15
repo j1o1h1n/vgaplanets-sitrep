@@ -2,15 +2,7 @@ import math
 
 from typing import NamedTuple
 
-
-def query_one(items, filter_func):
-    for item in items:
-        if filter_func(item):
-            return item
-
-
-def query(items, filter_func):
-    return [item for item in items if filter_func(item)]
+from . vgap import query, query_one
 
 
 def get_player_race_name(turn):

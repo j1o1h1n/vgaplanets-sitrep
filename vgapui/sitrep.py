@@ -9,14 +9,23 @@ from textual.widgets import Footer, Label, ListItem, ListView
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, Static
 from textual.widgets import DataTable
+from textual.app import App, ComposeResult
+from textual.widgets import Collapsible, Footer, Label, Markdown
+from rich.text import Text
 
 import getpass
 import logging
 import vgapui.vgap
 
+from .vgap import query_one
+
 DBFILE = "planets.db"
 ALL_SETTINGS = ["state"]
-
+TURNSTATUS = {
+    0: ("unseen", "grey93", "#eeeeee"),
+    1: ("seen", "dark_orange", "#ff8700"),
+    2: ("ready", "chartreuse3", "#5fd700"),
+}
 
 logger = logging.getLogger(__name__)
 
@@ -116,17 +125,49 @@ class ChooseGameScreen(Screen):
     Label {
         padding: 1 2;
     }
+
+    .row {
+        height: auto;
+    }
+
+    .unseen {
+        border: solid #eeeeee;
+    }
+    
+    .seen {
+        border: solid #ff8700;
+    }
+    
+    .ready {
+        border: solid #5fd700;
+    }
+    
     """
 
     def __init__(self, games, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.games = games
+    
+    def build_turn_info(self, game):
+        races = {r['id']:r['adjective'] for r in game.turn().rst['races']}
+        players = [p for p in game.info['players'] if p['accountid']]
+        data = [(p['username'], races[p['raceid']], TURNSTATUS[p['turnstatus']][1]) for p in players]
+        res = []
+        for name, race, status in data:
+            res.extend([("•", status), f" {name} ({race})\n"])
+        return Text.assemble(*res)
 
     def compose(self) -> ComposeResult:
-        items = [ListItem(Label(game.name)) for game in self.games]
-        self.log(f"Created list items {items}")
         yield Header()
-        yield ListView(*items, classes="game_chooser")
+        for game in self.games:
+            label = Label(self.build_turn_info(game))
+            title = f"{game.name} - #{game.info['game']['turn']}"
+            player_id = game.turn().player_id
+            player = query_one(game.info['players'], lambda p: p['id'] == player_id)
+            player_turn_status = TURNSTATUS[player['turnstatus']][0]
+            with Horizontal(classes=f"row {player_turn_status}"):
+                yield Collapsible(label, collapsed=True, title=Text.assemble(title))
+                yield Button("Select", id=f"g{game.game_id}", classes="game_chooser")
         yield Footer()
 
 
@@ -141,15 +182,15 @@ class SituationReport(App):
         super().__init__(*args, **kwargs)
         self.planets_db = planets_db
         self.settings = self.planets_db.settings()
+        self.game = None
         for k in ALL_SETTINGS:
             if not k in self.settings:
                 self.settings[k] = {}
-        self.games = list(self.planets_db.games())
-        self.game = None
-        self.choose_game(self.settings["state"].get("game_id", None))
 
     def on_mount(self):
         self.planets_db.update()
+        self.games = list(self.planets_db.games())
+        self.choose_game(self.settings["state"].get("game_id", None))
         if self.game:
             self.push_screen(ReportScreen(self.game))            
 
@@ -173,14 +214,11 @@ class SituationReport(App):
                 self.game = game
                 self.sub_title = self.game.name
                 self.settings['state']['game_id'] = game_id
-                return
+                return game
 
-    @on(ListView.Selected, ".game_chooser")
-    def game_chosen(self, selected: ListView.Selected):
-        idx = selected.list_view.index
-        game = self.games[idx]
-        self.choose_game(game.game_id)
-        self.push_screen(ReportScreen(game))
+    @on(Button.Pressed, ".game_chooser")
+    def game_chosen(self, event: Button.Pressed) -> None:
+        self.push_screen(ReportScreen(self.choose_game(int(event.button.id[1:]))))     
 
     @on(Button.Pressed, ".report")
     def report_pressed(self, event: Button.Pressed) -> None:

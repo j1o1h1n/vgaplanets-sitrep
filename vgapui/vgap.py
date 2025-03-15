@@ -35,7 +35,8 @@ TABLES = {
             game_id INTEGER PRIMARY KEY, 
             name TEXT NOT NULL,
             data JSON NOT NULL,
-            meta JSON NOT NULL
+            meta JSON NOT NULL,
+            info JSON NOT NULL
         );""",
     "turns":
         """
@@ -48,8 +49,8 @@ TABLES = {
 }
 
 INSERT_GAME = """
-REPLACE INTO games (game_id, name, meta, data)
-VALUES (?, ?, ?, ?);
+REPLACE INTO games (game_id, name, meta, data, info)
+VALUES (?, ?, ?, ?, ?);
 """
 
 INSERT_TURN = """
@@ -61,6 +62,16 @@ VALUES (?, ?, ?);
 LAST_UPDATED = """select COALESCE(JSON_EXTRACT(meta, '$.last_updated'), 0) last_updated, 
 JSON_EXTRACT(data, '$.status') status
 from games where status = 2"""
+
+
+def query_one(items, filter_func):
+    for item in items:
+        if filter_func(item):
+            return item
+
+
+def query(items, filter_func):
+    return [item for item in items if filter_func(item)]
 
 
 class Score(NamedTuple):
@@ -199,11 +210,12 @@ STATUS_JOINING, STATUS_RUNNING, STATUS_FINISHED, STATUS_HOLS = range(1, 5)
 
 class Game:
 
-    def __init__(self, game_id, name, meta, data, turns):
+    def __init__(self, game_id, name, meta, data, turns, info):
         self.game_id = game_id
         self.name = name
         self.meta = meta
         self.data = data
+        self.info = info
         self.turns = turns
         if self.turns:
             turn = self.turn()
@@ -351,11 +363,17 @@ class PlanetsDB:
                 meta['last_updated'] = now
                 meta = json.dumps(meta)
                 data = json.dumps(game)
-                cursor.execute(INSERT_GAME, (game_id, game_name, meta, data))
+                info = json.dumps(self.update_info(game['id']))
+                cursor.execute(INSERT_GAME, (game_id, game_name, meta, data, info))
             self.conn.commit()
             return True
         finally:
             cursor.close()
+
+    def update_info(self, game_id) -> bool:
+        req_data = dict(gameid=game_id)
+        req = requests.post(f"http://api.planets.nu/game/loadinfo", data=req_data)
+        return req.json()
 
     def update_turn(self, game_id, turn=None) -> bool:
         """ Update the turn information for the given turn from the server. """
@@ -390,7 +408,8 @@ class PlanetsDB:
             g.name, 
             g.game_id,
             g.meta,
-            g.data
+            g.data,
+            g.info
         FROM games g
         ORDER BY g.name;
         """
@@ -400,10 +419,11 @@ class PlanetsDB:
             cursor.execute(query)
             rows = cursor.fetchall()
             for row in rows:
-                name, game_id, meta, data = row
+                name, game_id, meta, data, info = row
                 meta = json.loads(meta)
                 data = json.loads(data)
-                ret.append(Game(game_id, name, meta, data, self.turns(game_id)))
+                info = json.loads(info)
+                ret.append(Game(game_id, name, meta, data, self.turns(game_id), info))
             return ret
         finally:
             cursor.close()
@@ -420,7 +440,8 @@ class PlanetsDB:
         try:
             meta = json.dumps(game.meta)
             data = json.dumps(game.data)
-            cursor.execute(INSERT_GAME, (game.game_id, game.name, meta, data))
+            info = json.dumps(game.info)
+            cursor.execute(INSERT_GAME, (game.game_id, game.name, meta, data, info))
         finally:
             cursor.close()
 
