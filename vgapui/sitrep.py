@@ -1,21 +1,20 @@
 from textual.app import App, ComposeResult
-from textual.containers import HorizontalScroll, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Placeholder
-from textual import on, work
-from textual.widgets import Header, Input, Footer, Markdown, OptionList
+from textual import on
+from textual.widgets import Header, Footer, OptionList
 from textual.containers import VerticalScroll
-from textual.widgets import Footer, Label, ListItem, ListView
-from textual.containers import Horizontal, VerticalScroll
+from textual.widgets import Label
+from textual.containers import Horizontal
 from textual.widgets import Button, Static
 from textual.widgets import DataTable
-from textual.app import App, ComposeResult
-from textual.widgets import Collapsible, Footer, Label, Markdown
+from textual.widgets import Collapsible
 from rich.text import Text
 
 import getpass
 import logging
 import vgapui.vgap
+
+from typing import Optional
 
 from .vgap import query_one
 
@@ -28,6 +27,77 @@ TURNSTATUS = {
 }
 
 logger = logging.getLogger(__name__)
+
+
+def build_milscore_report(scores):
+    def unpack(s):
+        return (
+            s.turn_id,
+            s.military_score,
+            s.military_score_delta,
+            s.capital_ships,
+            s.capital_ships_delta,
+            s.civilian_ships,
+            s.civilian_ships_delta,
+            s.starbases,
+            s.starbases_delta,
+        )
+
+    cols = [
+        "Turn",
+        "Military Score",
+        "Military Score +/-",
+        "Warships",
+        "Warships +/-",
+        "Freighters",
+        "Freighters +/-",
+        "Starbases",
+        "Starbases +/-",
+    ]
+
+    data = [unpack(s) for s in scores.values()]
+    return cols, data
+
+
+def build_econ_report(game):
+    cols = [
+        "Sector",
+        "Planet",
+        "MCr",
+        "Supplies",
+        "Neutronium",
+        "Duranium",
+        "Tritanium",
+        "Molybendeum",
+    ]
+    keys = [
+        "megacredits",
+        "supplies",
+        "neutronium",
+        "duranium",
+        "tritanium",
+        "molybdenum",
+    ]
+
+    def make_rec(d):
+        return [d[k] for k in keys]
+
+    turn = game.turn()
+    sec_map = {
+        p_id: i + 1 for i, sector in enumerate(turn.sectors()) for p_id in sector
+    }
+    planets = turn.planets(turn.player_id)
+    data = sorted(
+        [
+            (
+                f"S{sec_map.get(p['id'], 0)}",
+                f"P{p['id']}-{p['name']} ⨁",
+                *make_rec(p),
+            )
+            for p in planets
+        ]
+    )
+    return cols, data
 
 
 class ReportTableScreen(Screen):
@@ -44,9 +114,7 @@ class ReportTableScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield VerticalScroll(
-            self.table
-        )
+        yield VerticalScroll(self.table)
         yield Footer()
 
     def action_copy_data(self):
@@ -85,8 +153,9 @@ class ReportScreen(Screen):
     def __init__(self, game, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.game = game
-        self.player_options = ["Choose Player"] + [f"P{p.id}-{p.username} {p.racename}" 
-                                                   for p in self.game.players.values()]
+        self.player_options = ["Choose Player"] + [
+            f"P{p.id}-{p.username} {p.racename}" for p in self.game.players.values()
+        ]
         self.selected_player = None
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
@@ -109,7 +178,7 @@ class ReportScreen(Screen):
 
 
 class ChooseGameScreen(Screen):
-    """ Choose a game """
+    """Choose a game"""
 
     DEFAULT_CSS = """
     Screen {
@@ -133,25 +202,28 @@ class ChooseGameScreen(Screen):
     .unseen {
         border: solid #eeeeee;
     }
-    
+
     .seen {
         border: solid #ff8700;
     }
-    
+
     .ready {
         border: solid #5fd700;
     }
-    
+
     """
 
     def __init__(self, games, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.games = games
-    
+
     def build_turn_info(self, game):
-        races = {r['id']:r['adjective'] for r in game.turn().rst['races']}
-        players = [p for p in game.info['players'] if p['accountid']]
-        data = [(p['username'], races[p['raceid']], TURNSTATUS[p['turnstatus']][1]) for p in players]
+        races = {r["id"]: r["adjective"] for r in game.turn().rst["races"]}
+        players = [p for p in game.info["players"] if p["accountid"]]
+        data = [
+            (p["username"], races[p["raceid"]], TURNSTATUS[p["turnstatus"]][1])
+            for p in players
+        ]
         res = []
         for name, race, status in data:
             res.extend([("•", status), f" {name} ({race})\n"])
@@ -163,10 +235,10 @@ class ChooseGameScreen(Screen):
             label = Label(self.build_turn_info(game))
             title = f"{game.name} - #{game.info['game']['turn']}"
             player_id = game.turn().player_id
-            player = query_one(game.info['players'], lambda p: p['id'] == player_id)
-            player_turn_status = TURNSTATUS[player['turnstatus']][0]
+            player = query_one(game.info["players"], lambda p: p["id"] == player_id)
+            player_turn_status = TURNSTATUS[player["turnstatus"]][0]
             with Horizontal(classes=f"row {player_turn_status}"):
-                yield Collapsible(label, collapsed=True, title=Text.assemble(title))
+                yield Collapsible(label, collapsed=True, title=title)
                 yield Button("Select", id=f"g{game.game_id}", classes="game_chooser")
         yield Footer()
 
@@ -175,8 +247,10 @@ class SituationReport(App):
     TITLE = "Situation Report"
     SUB_TITLE = ""
 
-    BINDINGS = [("g", "choose_game", "Games"),
-                ("escape", "pop_screen", "Pop the current screen")]
+    BINDINGS = [
+        ("g", "choose_game", "Games"),
+        ("escape", "pop_screen", "Pop the current screen"),
+    ]
 
     def __init__(self, planets_db, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -184,7 +258,7 @@ class SituationReport(App):
         self.settings = self.planets_db.settings()
         self.game = None
         for k in ALL_SETTINGS:
-            if not k in self.settings:
+            if k not in self.settings:
                 self.settings[k] = {}
 
     def on_mount(self):
@@ -192,7 +266,7 @@ class SituationReport(App):
         self.games = list(self.planets_db.games())
         self.choose_game(self.settings["state"].get("game_id", None))
         if self.game:
-            self.push_screen(ReportScreen(self.game))            
+            self.push_screen(ReportScreen(self.game))
 
     def on_unmount(self):
         self.planets_db.save_settings(self.settings)
@@ -202,27 +276,31 @@ class SituationReport(App):
         yield Header()
         yield Footer()
 
-    def action_pop_screen(self) -> None:
+    def action_pop_screen(self):
         self.pop_screen()
 
-    def action_choose_game(self) -> None:
+    def action_choose_game(self):
         self.push_screen(ChooseGameScreen(self.games))
 
-    def choose_game(self, game_id):
+    def choose_game(self, game_id) -> Optional[vgapui.vgap.Game]:
         for game in self.games:
             if game.game_id == game_id:
                 self.game = game
                 self.sub_title = self.game.name
-                self.settings['state']['game_id'] = game_id
+                self.settings["state"]["game_id"] = game_id
                 return game
+        return None
 
     @on(Button.Pressed, ".game_chooser")
     def game_chosen(self, event: Button.Pressed) -> None:
-        self.push_screen(ReportScreen(self.choose_game(int(event.button.id[1:]))))     
+        button_id = event.button.id
+        if button_id:
+            game_id = int(button_id[1:])
+            self.push_screen(ReportScreen(self.choose_game(game_id)))
 
     @on(Button.Pressed, ".report")
     def report_pressed(self, event: Button.Pressed) -> None:
-        """ Pressed a report button """
+        """Pressed a report button"""
         assert event.button.id is not None
         rows = []
         player_id = None
@@ -232,28 +310,11 @@ class SituationReport(App):
                 if not player_id:
                     return
                 scores = self.game.scores()[player_id]
-                cols = ['Turn', 'Military Score', 'Military Score +/-', 'Warships', 'Warships +/-', 'Freighters', 'Freighters +/-', 'Starbases', 'Starbases +/-']
-                data = [(s.turn_id, s.military_score, s.military_score_delta, 
-                         s.capital_ships, s.capital_ships_delta,
-                         s.civilian_ships, s.civilian_ships_delta,
-                         s.starbases, s.starbases_delta)
-                        for s in scores.values()]
-                rows.append(cols)
-                rows.extend(data)
+                cols, data = build_milscore_report(scores)
             case "economic":
-                cols = ['Sector', 'Planet', 'MCr', 'Supplies', 'Neutronium', 
-                        'Duranium', 'Tritanium', 'Molybendeum']
-                keys = ['megacredits', 'supplies', 'neutronium', 'duranium', 
-                        'tritanium', 'molybdenum']
-                make_rec = lambda d: [d[k] for k in keys]
-                turn = self.game.turn()
-                sec_map = {p_id:i+1 for i, sector in enumerate(turn.sectors()) for p_id in sector}
-                planets = turn.planets(turn.player_id)
-                data = sorted([(f"S{sec_map.get(p['id'], 0)}", f"P{p['id']}-{p['name']}",
-                                *make_rec(p)) for p in planets])
-
-                rows.append(cols)
-                rows.extend(data)
+                cols, data = build_econ_report(self.game)
+        rows.append(cols)
+        rows.extend(data)
         if rows:
             racename = self.game.players[player_id].racename if player_id else ""
             self.push_screen(ReportTableScreen(rows, racename=racename))
@@ -275,9 +336,10 @@ app = SituationReport(planets_db)
 def main():
     app.run()
 
+
 if __name__ == "__main__":
     logging.basicConfig(
-    level=logging.DEBUG,  # Set the logging level to DEBUG
-        format="%(asctime)s - %(levelname)s - %(message)s"
+        level=logging.DEBUG,  # Set the logging level to DEBUG
+        format="%(asctime)s - %(levelname)s - %(message)s",
     )
     main()
