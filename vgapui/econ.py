@@ -1,14 +1,14 @@
 import math
 
-from typing import NamedTuple
+from typing import NamedTuple, Optional, Union
 
-from .vgap import query_one
+from .vgap import query_one, Turn
 
 
-def get_player_race_name(turn):
-    player_race_id = turn.rst["player"]["raceid"]
-    races = turn.rst["races"]
-    race = query_one(races, lambda x: x["id"] == player_race_id)
+def get_player_race_name(turn: Turn) -> str:
+    "returns the adjective name for the plater race"
+    race_id = turn.rst["player"]["raceid"]
+    race = query_one(turn.rst["races"], lambda x: x["id"] == race_id)
     return race["adjective"]
 
 
@@ -46,21 +46,152 @@ class PlanetColony(NamedTuple):
     nativehappypoints: int
     colonistracename: str  # e.g., "Fed", "Lizard", "Bird Man", etc.
     nativeracename: str  # e.g., "Siliconoid", "Amorphous", etc.
-    nativegovernment: str
+    nativegovernment: int
 
 
 def build_planet_resources(turn, planet_id) -> PlanetResources:
+    "returns a PlanetResources instance from turn planet data"
     planet_data = query_one(turn.rst["planets"], lambda x: x["id"] == planet_id)
     args = {k: planet_data[k] for k in PlanetResources._fields}
     return PlanetResources(**args)
 
 
 def build_planet_colony(turn, planet_id) -> PlanetColony:
+    "returns a PlanetColony instance from turn planet data"
     player_race = get_player_race_name(turn)
     planet_data = query_one(turn.rst["planets"], lambda x: x["id"] == planet_id)
     args = {k: planet_data[k] for k in PlanetColony._fields if k != "colonistracename"}
     args["colonistracename"] = player_race
     return PlanetColony(**args)
+
+
+def calc_native_max_pop(colony: PlanetColony) -> int:
+    "Return the maximum population for the colony"
+    if colony.nativeracename == "Siliconoid":
+        return colony.temp * 1000
+    return round(math.sin(math.pi * ((100 - colony.temp) / 100)) * 150000)
+
+
+def calc_native_growth(colony: PlanetColony) -> int:
+    """
+    Returns the native growth for the planet
+    """
+    native_growth = 0
+    native_max_population = calc_native_max_pop(colony)
+
+    # Borg Assimilation
+    if colony.colonistracename == "Cyborg" and colony.nativeracename != "Amorphous":
+        assimilation_rate = 1.0  # 100%
+        colonist_growth = round(
+            min(
+                colony.clans * assimilation_rate, colony.nativeclans * assimilation_rate
+            )
+        )
+        native_growth = -colonist_growth
+
+    # Native Growth Conditions (Happiness ≥ 70)
+    if colony.nativeracename == "Siliconoid":
+        native_growth_rate = colony.temp / 100
+    else:
+        native_growth_rate = math.sin(math.pi * ((100 - colony.temp) / 100))
+
+    pop = colony.nativeclans / 20
+    tax = 5 / (colony.nativetaxrate + 5)
+    native_growth += round(native_growth_rate * pop * tax)
+    if colony.nativehappypoints < 70:
+        native_growth = min(native_growth, 0)
+
+    # Large native population reduces growth
+    if colony.nativeclans > 66000 and native_growth > 0:
+        native_growth = round(native_growth / 2)
+
+    # Ensure native growth does not exceed max population
+    native_growth = min(native_growth, native_max_population - colony.nativeclans)
+
+    # Non-Borg natives cannot have negative growth
+    if colony.colonistracename != "Cyborg":
+        native_growth = max(0, native_growth)
+
+    return native_growth
+
+
+def calc_colonist_growth(colony: PlanetColony) -> int:
+    "return colonist growth fpr the colony, before population limits, starvation and civil war"
+    colonist_growth = 0
+
+    # Borg Assimilation
+    if colony.colonistracename == "Cyborg" and colony.nativeracename != "Amorphous":
+        assimilation_rate = 1.0  # 100%
+        colonist_growth = round(
+            min(
+                colony.clans * assimilation_rate, colony.nativeclans * assimilation_rate
+            )
+        )
+
+    if colony.colonistracename == "Crystalline":
+        growth_rate = (colony.temp**2) / 4000
+    else:
+        if 15 <= colony.temp <= 84:
+            growth_rate = math.sin(math.pi * ((100 - colony.temp) / 100))
+        else:
+            growth_rate = 0
+
+    pop = colony.clans / 20
+    tax = 5 / (colony.colonisttaxrate + 5)
+    colonist_growth += round(growth_rate * pop * tax)
+    colonist_growth = math.trunc(colonist_growth)
+
+    # Colonist Growth Conditions (Happiness ≥ 70)
+    if colony.colonisthappypoints < 70:
+        colonist_growth - max(0, colonist_growth)
+
+    # Amorphous natives consume colonists
+    if colony.nativeracename == "Amorphous":
+        colonist_growth -= max(5, 100 - colony.nativehappypoints)
+
+    return colonist_growth
+
+
+def calc_colonist_max_pop(colony: PlanetColony) -> tuple[int, int]:
+    "return max population current and absolute values"
+    colonist_cur_max_pop = -1
+    climate_death_rate = 0.1
+    if colony.colonistracename == "Crystalline":
+        # Crystalline formula (likes 100° planets)
+        colonist_abs_max_pop = round(colony.temp * 1000)
+    else:
+        # Non-Crystalline formula (likes 50° planets)
+        colonist_abs_max_pop = round(
+            math.sin(math.pi * ((100 - colony.temp) / 100)) * 100000
+        )
+        if colony.temp > 84:
+            colonist_abs_max_pop = math.trunc(
+                (20099.9 - (200 * colony.temp)) * climate_death_rate
+            )
+            colonist_cur_max_pop = (
+                colony.clans
+                - math.trunc(colony.clans * climate_death_rate)
+                - 2 * (100 - colony.temp)
+            )
+        elif colony.temp < 15:
+            colonist_abs_max_pop = math.trunc(
+                (299.9 + (200 * colony.temp)) * climate_death_rate
+            )
+            colonist_cur_max_pop = (
+                colony.clans
+                - math.trunc(colony.clans * climate_death_rate)
+                - 2 * (1 + colony.temp)
+            )
+    if colony.temp <= 19 and colony.colonistracename == "Rebels":
+        # Rebels can have up to 90,000 clans (9 million colonists) on any planet
+        # with a temperature of 19 degrees or less
+        colonist_abs_max_pop = max(colonist_abs_max_pop, 90000)
+    colonist_cur_max_pop = max(colonist_abs_max_pop, colonist_cur_max_pop)
+    if colony.colonistracename in ["Fury", "Robots", "Rebels", "Colonies"]:
+        colonist_abs_max_pop = max(colonist_abs_max_pop, 60)
+    if colonist_cur_max_pop == -1:
+        colonist_cur_max_pop = colonist_abs_max_pop
+    return colonist_cur_max_pop, colonist_abs_max_pop
 
 
 def update_mining(resources: PlanetResources, mines: int) -> PlanetResources:
@@ -175,7 +306,7 @@ def get_taxation_warnings(
     return warnings
 
 
-def update_colonist_happiness(colony: PlanetColony, hiss_effect: int) -> int:
+def calc_colonist_happiness_change(colony: PlanetColony, hiss_effect: int) -> int:
     """
     Calculates the change in colonist happiness based on population, taxation, temperature, and infrastructure.
 
@@ -190,32 +321,25 @@ def update_colonist_happiness(colony: PlanetColony, hiss_effect: int) -> int:
     Returns:
     - int: The change in colonist happiness.
     """
-    tax, population, race = (
-        colony.colonisttaxrate,
-        colony.clans,
-        colony.colonistracename,
-    )
+    tax = colony.colonisttaxrate
+    pop = colony.clans
+    race = colony.colonistracename
 
-    population_penalty = math.sqrt(population)
+    pop_penalty = math.sqrt(pop)
     tax_penalty = 80 * tax
-    temperature_base = 100 if race == "Crystal" else 50
-    temperature_penalty = abs(temperature_base - colony.temp) * 3
-    infrastructure_penalty = (colony.factories + colony.mines) / 3
+    temp_base = 100 if race == "Crystal" else 50
+    temp_penalty = abs(temp_base - colony.temp) * 3
+    dev_penalty = (colony.factories + colony.mines) / 3
 
-    return hiss_effect + math.trunc(
-        (
-            1000
-            - population_penalty
-            - tax_penalty
-            - temperature_penalty
-            - infrastructure_penalty
-        )
-        / 100
-    )
+    res = (1000 - pop_penalty - tax_penalty - temp_penalty - dev_penalty) / 100
+    return math.trunc(res) + hiss_effect
 
 
-def update_native_happiness(
-    colony: PlanetColony, hiss_effect: int, nebula_bonus: bool
+def calc_native_happiness_change(
+    colony: PlanetColony,
+    hiss_effect=0,
+    nebula_bonus=False,
+    nativetaxrate: Optional[int] = None,
 ) -> int:
     """
         Calculates the change in native happiness based on population, taxation, temperature, and infrastructure.
@@ -232,37 +356,66 @@ def update_native_happiness(
         Returns:
         - int: The change in colonist happiness.
     """
-    tax, population, race = (
-        colony.nativetaxrate,
-        colony.nativeclans,
-        colony.nativeracename,
-    )
+    tax = colony.nativetaxrate if nativetaxrate is None else nativetaxrate
+    pop = colony.nativeclans
+    race = colony.nativeracename
 
-    population_penalty = math.sqrt(population)
+    pop_penalty = math.sqrt(pop)
     tax_penalty = 85 * tax
-    infrastructure_penalty = (colony.factories + colony.mines) / 2
-    government_penalty = 50 * (10 - int(colony.nativegovernment))
+    dev_penalty = (colony.factories + colony.mines) / 2
+    gov_penalty = 50 * (10 - colony.nativegovernment)
 
-    happiness_change = hiss_effect + math.trunc(
-        (
-            1000
-            - population_penalty
-            - tax_penalty
-            - infrastructure_penalty
-            - government_penalty
-        )
-        / 100
+    res = math.trunc(
+        (1000 - pop_penalty - tax_penalty - dev_penalty - gov_penalty) / 100
     )
-
     if race == "Avian":
-        happiness_change += 10
+        res += 10
     if nebula_bonus:
-        happiness_change += 5
+        res += 5
+    return math.trunc(res) + hiss_effect
 
-    return happiness_change
+
+def calc_native_tax_for_happiness_change(
+    colony: PlanetColony, nebula_bonus=False, desired_delta: int = 0
+) -> int:
+    "return the tax rate required to get a given happiness change"
+    pop = colony.nativeclans
+    race = colony.nativeracename
+
+    pop_penalty = math.sqrt(pop)
+    dev_penalty = math.trunc((colony.factories + colony.mines) / 2)
+    gov_penalty = 50 * (10 - colony.nativegovernment)
+
+    # For Avian races, the desired delta effectively is reduced by 10 in the inversion.
+    effective_delta = desired_delta
+    if race == "Avian":
+        effective_delta = effective_delta - 10
+    if nebula_bonus:
+        effective_delta = effective_delta - 5
+
+    # Rearranged continuous equation:
+    # 100 * effective_delta = 1000 - pop_penalty - 85*tax - dev_penalty - gov_penalty
+    # 85 * tax = 1000 - pop_penalty - dev_penalty - gov_penalty - 100*effective_delta
+    # tax = (1000 - pop_penalty - dev_penalty - gov_penalty - 100*effective_delta) / 85
+    rate = (1000 - pop_penalty - dev_penalty - gov_penalty - 100 * effective_delta) / 85
+    rate = round(rate)
+
+    # see if slightly higher rate gets same delta
+    if desired_delta >= 0:
+        if (
+            calc_native_happiness_change(
+                colony, nebula_bonus=nebula_bonus, nativetaxrate=rate + 1
+            )
+            == desired_delta
+        ):
+            rate = rate + 1
+
+    return max(0, min(100, round(rate)))
 
 
-def calculate_native_tax_income(colony: PlanetColony) -> int:
+def calc_native_tax_income(
+    colony: PlanetColony, nativetaxrate: Optional[int] = None
+) -> int:
     """
     Calculates the native tax income based on population, race, tax scale, and government type.
 
@@ -272,22 +425,44 @@ def calculate_native_tax_income(colony: PlanetColony) -> int:
     Returns:
     - int: The calculated native tax income.
     """
+    if nativetaxrate is None:
+        nativetaxrate = colony.nativetaxrate
+    if colony.colonistracename == "Cyborg":
+        nativetaxrate = min(20, nativetaxrate)
+
     if colony.nativeracename == "Amorphous" or colony.nativeracename == "none":
         return 0  # Amorphous natives and no natives generate no tax income.
 
     base_income = colony.nativeclans / 100
-    tax_rate = (
-        min(20, colony.nativetaxrate)
-        if colony.colonistracename == "Cyborg"
-        else colony.nativetaxrate
-    )
 
     native_tax_income = round(
-        base_income * (tax_rate / 10) * (int(colony.nativegovernment) / 5)
+        base_income * nativetaxrate / 10 * colony.nativegovernment / 5
     )
 
+    if colony.nativeracename == "Insectoid":
+        native_tax_income *= 2
+    if colony.colonistracename == "Fed":
+        native_tax_income *= 2
+
     # Tax income cannot exceed the number of colonists present.
-    return min(colony.clans, native_tax_income)
+    return min(5000, min(colony.clans, native_tax_income))
+
+
+def calc_native_tax_rate_for_income(
+    colony: PlanetColony, fullincome: Union[int, float]
+) -> int:
+    "calculate the native tax rate required for the given income"
+    income = fullincome
+    if colony.nativeracename == "Insectoid":
+        income /= 2
+    if colony.colonistracename == "Fed":
+        income /= 2
+    rate = round((income * 5000) / (colony.nativeclans * colony.nativegovernment))
+    if calc_native_tax_income(colony, rate - 1) >= fullincome:
+        return rate - 1
+    if calc_native_tax_income(colony, rate) < fullincome:
+        return rate + 1
+    return rate
 
 
 def update_colony(
@@ -311,129 +486,29 @@ def update_colony(
     native_hiss_effect = max_hiss_effect(colony.nativehappypoints, hiss_effect)
 
     # Happiness Change
-    new_colonist_happiness = min(
-        100,
-        colony.colonisthappypoints
-        + update_colonist_happiness(colony, colonist_hiss_effect),
-    )
-    new_native_happiness = min(
-        100,
-        colony.nativehappypoints
-        + update_native_happiness(colony, native_hiss_effect, nebula_bonus),
-    )
+    delta = calc_colonist_happiness_change(colony, colonist_hiss_effect)
+    new_colonist_happiness = min(100, colony.colonisthappypoints + delta)
+
+    delta = calc_native_happiness_change(colony, native_hiss_effect, nebula_bonus)
+    new_native_happiness = min(100, colony.nativehappypoints + delta)
 
     # Supplies & Income Calculation
     colonist_tax_income = round(colony.clans / 100 * colony.colonisttaxrate / 10)
-    native_tax_income = calculate_native_tax_income(colony)
+    native_tax_income = calc_native_tax_income(colony)
 
     if new_colonist_happiness <= 30:
         colonist_tax_income = 0
     if new_native_happiness <= 30:
         native_tax_income = 0
 
-    if colony.nativeracename == "Insectoid":
-        native_tax_income *= 2
     if colony.colonistracename == "Fed":
-        native_tax_income *= 2
         colonist_tax_income *= 2
     tax_income = min(5000, native_tax_income + colonist_tax_income)
 
-    colonist_growth = 0
-    native_growth = 0
-    native_max_population = 0
-
-    # Borg Assimilation
-    if colony.colonistracename == "Cyborg" and colony.nativeracename != "Amorphous":
-        assimilation_rate = 1.0  # 100%
-        colonist_growth = round(
-            min(
-                colony.clans * assimilation_rate, colony.nativeclans * assimilation_rate
-            )
-        )
-        native_growth = -colonist_growth
-
-    # Colonist Growth Conditions (Happiness ≥ 70)
-    if colony.colonisthappypoints >= 70:
-        if colony.colonistracename == "Crystalline":
-            growth_rate = (colony.temp**2) / 4000
-        else:
-            if 15 <= colony.temp <= 84:
-                growth_rate = math.sin(math.pi * ((100 - colony.temp) / 100))
-            else:
-                growth_rate = 0
-
-        pop = colony.clans / 20
-        tax = 5 / (colony.colonisttaxrate + 5)
-        colonist_growth += round(growth_rate * pop * tax)
-        colonist_growth = math.trunc(colonist_growth)
-
-    # Native Growth Conditions (Happiness ≥ 70)
-    if colony.nativehappypoints >= 70:
-        if colony.nativeracename == "Siliconoid":
-            native_max_population = colony.temp * 1000
-            native_growth_rate = colony.temp / 100
-        else:
-            native_max_population = round(
-                math.sin(math.pi * ((100 - colony.temp) / 100)) * 150000
-            )
-            native_growth_rate = math.sin(math.pi * ((100 - colony.temp) / 100))
-
-        pop = colony.nativeclans / 20
-        tax = 5 / (colony.nativetaxrate + 5)
-        native_growth += round(native_growth_rate * pop * tax)
-
-    # Large native population reduces growth
-    if colony.nativeclans > 66000 and native_growth > 0:
-        native_growth = round(native_growth / 2)
-
-    # Ensure native growth does not exceed max population
-    native_growth = min(native_growth, native_max_population - colony.nativeclans)
-
-    # Non-Borg natives cannot have negative growth
-    if colony.colonistracename != "Cyborg":
-        native_growth = max(0, native_growth)
-
-    # Amorphous natives consume colonists
-    if colony.nativeracename == "Amorphous":
-        colonist_growth -= max(5, 100 - colony.nativehappypoints)
-
-    colonist_cur_max_pop = -1
-    climate_death_rate = 0.1
-    if colony.colonistracename == "Crystalline":
-        # Crystaline formula (likes 100° planets)
-        colonist_abs_max_pop = round(colony.temp * 1000)
-    else:
-        # Non-Crystaline formula (likes 50° planets)
-        colonist_abs_max_pop = round(
-            math.sin(math.pi * ((100 - colony.temp) / 100)) * 100000
-        )
-        if colony.temp > 84:
-            colonist_abs_max_pop = math.trunc(
-                (20099.9 - (200 * colony.temp)) * climate_death_rate
-            )
-            colonist_cur_max_pop = (
-                colony.clans
-                - math.trunc(colony.clans * climate_death_rate)
-                - 2 * (100 - colony.temp)
-            )
-        elif colony.temp < 15:
-            colonist_abs_max_pop = math.trunc(
-                (299.9 + (200 * colony.temp)) * climate_death_rate
-            )
-            colonist_cur_max_pop = (
-                colony.clans
-                - math.trunc(colony.clans * climate_death_rate)
-                - 2 * (1 + colony.temp)
-            )
-    if colony.temp <= 19 and colony.colonistracename == "Rebels":
-        # Rebels can have up to 90,000 clans (9 million colonists) on any planet
-        # with a temperature of 19 degrees or less
-        colonist_abs_max_pop = max(colonist_abs_max_pop, 90000)
-    colonist_cur_max_pop = max(colonist_abs_max_pop, colonist_cur_max_pop)
-    if colony.colonistracename in ["Fury", "Robots", "Rebels", "Colonies"]:
-        colonist_abs_max_pop = max(colonist_abs_max_pop, 60)
-    if colonist_cur_max_pop == -1:
-        colonist_cur_max_pop = colonist_abs_max_pop
+    # calculate colonist and native growth and max native pop
+    colonist_growth = calc_colonist_growth(colony)
+    native_growth = calc_native_growth(colony)
+    colonist_cur_max_pop, colonist_abs_max_pop = calc_colonist_max_pop(colony)
 
     # update supplies
     new_supplies = colony.factories

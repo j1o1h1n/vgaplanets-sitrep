@@ -1,0 +1,68 @@
+
+OptionList {
+    width: 80;
+    border: blue;
+}
+
+OptionList:focus-within {
+    height: 8;
+}
+
+Horizontal > VerticalScroll {
+    width: 24;
+}
+
+Label {
+    padding: 1 2;
+}
+
+Collapsible {
+    color: $text-primary;
+    background: $primary-muted;
+}
+
+Button {
+    color: $text-secondary;
+    background: $secondary-muted;
+}
+
+.standard_reports {
+    border: panel #ff9c00;
+}
+
+.buttons {
+    padding: 1 2 0 0;
+    align: right bottom;
+}
+
+.row {
+    height: auto;
+    color: $text-primary;
+    background: $primary-muted;
+}
+
+.unseen {
+    border: solid #e7ffff;
+}
+
+.seen {
+    border: solid #d45f10;
+}
+
+.ready {
+    border: panel #4bb0ff;
+}
+
+.header {
+    margin: 1 0 1 1;
+    color: $text-accent;
+    text-style: bold;
+    border: hkey #f7bd5a;
+}
+
+.squash {
+    height: 3;
+    color: $text-accent;
+    background: #646dcc;
+    border: round #9c9cff;
+}

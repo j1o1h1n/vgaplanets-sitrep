@@ -4,7 +4,7 @@ from textual import on
 from textual.widgets import Header, Footer, OptionList
 from textual.containers import VerticalScroll
 from textual.widgets import Label
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Static
 from textual.widgets import DataTable
 from textual.widgets import Collapsible
@@ -12,21 +12,23 @@ from rich.text import Text
 
 import getpass
 import logging
-import vgapui.vgap
+
+from . import vgap
+from . import econrep
 
 from typing import Optional
 
-from .vgap import query_one
-
 DBFILE = "planets.db"
 ALL_SETTINGS = ["state"]
+
 TURNSTATUS = {
-    0: ("unseen", "grey93", "#eeeeee"),
-    1: ("seen", "dark_orange", "#ff8700"),
-    2: ("ready", "chartreuse3", "#5fd700"),
+    0: ("unseen", "#e7ffff"),
+    1: ("seen", "#d45f10"),
+    2: ("ready", "#4bb0ff"),
 }
 
 logger = logging.getLogger(__name__)
+query_one = vgap.query_one
 
 
 def build_milscore_report(scores):
@@ -122,33 +124,6 @@ class ReportTableScreen(Screen):
 
 
 class ReportScreen(Screen):
-    DEFAULT_CSS = """
-    Button {
-        margin: 1 2;
-    }
-
-    Horizontal > VerticalScroll {
-        width: 24;
-    }
-
-    .header {
-        margin: 1 0 0 2;
-        text-style: bold;
-    }
-
-   OptionList {
-        width: 80;
-        border: blue;
-    }
-
-   OptionList:focus-within {
-        height: 8;
-    }
-
-    .squash {
-        height: 3;
-    }
-    """
 
     def __init__(self, game, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -166,52 +141,19 @@ class ReportScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Horizontal(
-            OptionList(*self.player_options, id="selected_player", classes="squash"),
-            VerticalScroll(
-                Static("Standard Reports", classes="header"),
-                Button("Military", id="military", classes="report"),
-                Button("Economic", id="economic", classes="report"),
-            ),
-        )
+        with Vertical(classes="row standard_reports"):
+            yield Static("Standard Reports", classes="header")
+            with Horizontal(classes="row"):
+                yield Button("Military", id="military", classes="report")
+                yield OptionList(
+                    *self.player_options, id="selected_player", classes="squash"
+                )
+            yield Button("Economic", id="economic", classes="report")
         yield Footer()
 
 
 class ChooseGameScreen(Screen):
     """Choose a game"""
-
-    DEFAULT_CSS = """
-    Screen {
-        align: center middle;
-    }
-
-    ListView {
-        width: 30;
-        height: auto;
-        margin: 2 2;
-    }
-
-    Label {
-        padding: 1 2;
-    }
-
-    .row {
-        height: auto;
-    }
-
-    .unseen {
-        border: solid #eeeeee;
-    }
-
-    .seen {
-        border: solid #ff8700;
-    }
-
-    .ready {
-        border: solid #5fd700;
-    }
-
-    """
 
     def __init__(self, games, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -233,17 +175,26 @@ class ChooseGameScreen(Screen):
         yield Header()
         for game in self.games:
             label = Label(self.build_turn_info(game))
-            title = f"{game.name} - #{game.info['game']['turn']}"
+            title = f"{game.name} - T#{game.info['game']['turn']}"
             player_id = game.turn().player_id
             player = query_one(game.info["players"], lambda p: p["id"] == player_id)
             player_turn_status = TURNSTATUS[player["turnstatus"]][0]
-            with Horizontal(classes=f"row {player_turn_status}"):
+            with Vertical(classes=f"row {player_turn_status}"):
                 yield Collapsible(label, collapsed=True, title=title)
-                yield Button("Select", id=f"g{game.game_id}", classes="game_chooser")
+                with Horizontal(classes="row buttons"):
+                    yield Button(
+                        "Select", id=f"g{game.game_id}", classes="game_chooser"
+                    )
+                    yield Button(
+                        "Refresh", id=f"r{game.game_id}", classes="refresh_game"
+                    )
         yield Footer()
 
 
 class SituationReport(App):
+
+    CSS_PATH = "situation_report.tcss"
+
     TITLE = "Situation Report"
     SUB_TITLE = ""
 
@@ -261,8 +212,8 @@ class SituationReport(App):
             if k not in self.settings:
                 self.settings[k] = {}
 
-    def on_mount(self):
-        self.planets_db.update()
+    async def on_mount(self):
+        await self.planets_db.update()
         self.games = list(self.planets_db.games())
         self.choose_game(self.settings["state"].get("game_id", None))
         if self.game:
@@ -282,21 +233,43 @@ class SituationReport(App):
     def action_choose_game(self):
         self.push_screen(ChooseGameScreen(self.games))
 
-    def choose_game(self, game_id) -> Optional[vgapui.vgap.Game]:
-        for game in self.games:
-            if game.game_id == game_id:
-                self.game = game
-                self.sub_title = self.game.name
-                self.settings["state"]["game_id"] = game_id
-                return game
-        return None
+    def choose_game(self, game_id) -> Optional[vgap.Game]:
+        game = query_one(self.games, lambda g: g.game_id == game_id)
+        if not game:
+            return None
+        self.game = game
+        self.sub_title = self.game.name
+        self.settings["state"]["game_id"] = game_id
+        return self.game
 
     @on(Button.Pressed, ".game_chooser")
     def game_chosen(self, event: Button.Pressed) -> None:
         button_id = event.button.id
-        if button_id:
-            game_id = int(button_id[1:])
-            self.push_screen(ReportScreen(self.choose_game(game_id)))
+        if not button_id:
+            return
+        game_id = int(button_id[1:])
+        self.push_screen(ReportScreen(self.choose_game(game_id)))
+
+    @on(Button.Pressed, ".refresh_game")
+    async def refresh_game(self, event: Button.Pressed) -> None:
+        "update global game info and reload latest turn of selected game"
+        button_id = event.button.id
+        if not button_id:
+            return
+        game_id = int(button_id[1:])
+        self.run_worker(self.handle_refresh_game(game_id), exclusive=True)
+
+    async def handle_refresh_game(self, game_id):
+        "refresh game data, call from worker"
+        self.log(f"refresh_game: update {game_id}")
+        await self.planets_db.update(force_update=True)
+
+        game = query_one(self.games, lambda g: g.game_id == game_id)
+        turn_id = game.turn().turn_id
+        await planets_db.update_turn(game_id, turn_id)
+
+        self.games = list(self.planets_db.games())
+        self.log("refresh_game: done")
 
     @on(Button.Pressed, ".report")
     def report_pressed(self, event: Button.Pressed) -> None:
@@ -304,23 +277,26 @@ class SituationReport(App):
         assert event.button.id is not None
         rows = []
         player_id = None
+        cols = data = []
         match event.button.id:
             case "military":
                 player_id = self.query_one(ReportScreen).selected_player
+                racename = self.game.players[player_id].racename if player_id else ""
                 if not player_id:
                     return
                 scores = self.game.scores()[player_id]
                 cols, data = build_milscore_report(scores)
+                rows.append(cols)
+                rows.extend(data)
+                self.push_screen(ReportTableScreen(rows, racename=racename))
             case "economic":
-                cols, data = build_econ_report(self.game)
-        rows.append(cols)
-        rows.extend(data)
-        if rows:
-            racename = self.game.players[player_id].racename if player_id else ""
-            self.push_screen(ReportTableScreen(rows, racename=racename))
+                racename = self.game.players[self.game.turn().player_id].racename
+                self.push_screen(
+                    econrep.EconReportTableScreen(self.game, racename=racename)
+                )
 
 
-planets_db = vgapui.vgap.PlanetsDB(DBFILE)
+planets_db = vgap.PlanetsDBAsync(DBFILE)
 if not planets_db.account:
     username = input("Username: ")
     password = getpass.getpass("Password: ")

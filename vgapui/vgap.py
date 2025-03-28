@@ -4,12 +4,13 @@ See https://help.planets.nu/API for the APi
 
 import time
 import requests
+import httpx
 import sqlite3
 import json
 import logging
 import datetime
 
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Any
 from pathlib import Path
 
 import vgapui.space
@@ -278,7 +279,7 @@ class Game:
         return res
 
 
-class PlanetsDB:
+class _PlanetsDB:
 
     def __init__(self, db_file):
         self.db_file = db_file
@@ -287,10 +288,6 @@ class PlanetsDB:
         for table in TABLES.values():
             self.conn.execute(table)
 
-    def close(self):
-        # self.conn.execute("PRAGMA wal_checkpoint(FULL);")
-        self.conn.close()
-
     def login(self, username, password):
         data = dict(username=username, password=password)
         req = requests.post("http://api.planets.nu/account/login", data=data)
@@ -298,6 +295,10 @@ class PlanetsDB:
         self.account = {"username": username, "apikey": apikey}
         save_api_key(self.account)
         return self.account
+
+    def close(self):
+        # self.conn.execute("PRAGMA wal_checkpoint(FULL);")
+        self.conn.close()
 
     def settings(self):
         cursor = self.conn.cursor()
@@ -334,120 +335,10 @@ class PlanetsDB:
         finally:
             cursor.close()
 
-    def update(self, force_update=False):
-        if not self.update_games(force_update):
-            return
-        cursor = self.conn.cursor()
-        try:
-            for game in self.games():
-                latest = game.data["turn"]
-                missing = {t for t in range(1, latest + 1) if t not in game.turns}
-                unavail = game.meta.get("unavailable_turns", [])
-                for t in unavail:
-                    missing.discard(t)
-                if not missing:
-                    continue
-                logger.info(f"loading turns {missing} for {game.name}")
-                for turn_id in missing:
-                    if not self.update_turn(game.game_id, turn_id):
-                        unavail.append(turn_id)
-                unavail = list(set(unavail))
-                unavail.sort()
-                game.meta["unavailable_turns"] = unavail
-                cursor.execute(
-                    "update games set meta = json(?) where game_id = ?",
-                    (json.dumps(game.meta), game.game_id),
-                )
-            self.conn.commit()
-        finally:
-            cursor.close()
-
     def last_updated(self) -> int:
         cursor = self.conn.cursor()
         try:
             return cursor.execute(LAST_UPDATED).fetchone()[0] or 0
-        finally:
-            cursor.close()
-
-    def update_games(self, force_update=False) -> bool:
-        """
-        Update the games table with latest information for each game.
-
-        If not force_update and the game data was last updated less than an
-        hour ago, returns False.
-        """
-        cursor = self.conn.cursor()
-        try:
-            last_updated = self.last_updated()
-            now = int(time.time())
-            ref_ts = now - ONE_HOUR_SECS
-            logger.info(
-                f"load_games last_updated {last_updated}, comparison ts {ref_ts}"
-            )
-            if not force_update and last_updated and last_updated > ref_ts:
-                logging.info(f"games last updated {last_updated}, skipping refresh")
-                return False
-
-            existing_meta = {}
-            cursor.execute("select game_id, meta from games")
-            for row in cursor:
-                existing_meta[row[0]] = json.loads(row[1])
-
-            username = self.account["username"]
-            req = requests.get(
-                f"http://api.planets.nu/games/list?username={username}&scope=1"
-            )
-            games = req.json()
-            for game in games:
-                game_id = game["id"]
-                game_name = game["name"]
-                meta = existing_meta.get(game_id, {})
-                meta["last_updated"] = now
-                meta = json.dumps(meta)
-                data = json.dumps(game)
-                info = json.dumps(self.update_info(game["id"]))
-                cursor.execute(INSERT_GAME, (game_id, game_name, meta, data, info))
-            self.conn.commit()
-            return True
-        finally:
-            cursor.close()
-
-    def update_info(self, game_id) -> bool:
-        req_data = dict(gameid=game_id)
-        req = requests.post("http://api.planets.nu/game/loadinfo", data=req_data)
-        return req.json()
-
-    def update_turn(self, game_id, turn=None) -> bool:
-        """Update the turn information for the given turn from the server."""
-        req_data = dict(gameid=game_id, apikey=self.account["apikey"])
-        if turn is not None:
-            req_data["turn"] = turn
-        req = requests.post("http://api.planets.nu/game/loadturn", data=req_data)
-        data = req.json()
-        if not data["success"]:
-            logger.warn(f"update_turn game_id={game_id}, turn={turn}: {data['error']}")
-            return False
-
-        rst = data["rst"]
-        if turn is None:
-            turn = rst["game"]["turn"]
-
-        # Serialize the turn data into JSON format
-        turn_data_json = json.dumps(data)
-
-        cursor = self.conn.cursor()
-        try:
-            # Execute the insert query
-            cursor.execute(
-                INSERT_TURN,
-                (
-                    game_id,
-                    turn,
-                    turn_data_json,
-                ),
-            )
-            self.conn.commit()
-            return True
         finally:
             cursor.close()
 
@@ -513,5 +404,224 @@ class PlanetsDB:
                 turn_id = turn_data["rst"]["game"]["turn"]
                 turns[turn_id] = Turn(turn_id, turn_data)
             return turns
+        finally:
+            cursor.close()
+
+    def save_turn(self, game_id: int, turn_id: int, data: dict[str, Any]):
+        "save turn data loaded from server to the database"
+        cursor = self.conn.cursor()
+        try:
+            # Execute the insert query
+            cursor.execute(
+                INSERT_TURN,
+                (
+                    game_id,
+                    turn_id,
+                    json.dumps(data),
+                ),
+            )
+            self.conn.commit()
+        finally:
+            cursor.close()
+
+
+class PlanetsDB(_PlanetsDB):
+    "synchronous version"
+
+    def update_info(self, game_id) -> dict:
+        req_data = dict(gameid=game_id)
+        req = requests.post("http://api.planets.nu/game/loadinfo", data=req_data)
+        return req.json()
+
+    def update_games(self, force_update=False) -> bool:
+        """
+        Update the games table with latest information for each game.
+
+        If not force_update and the game data was last updated less than an
+        hour ago, returns False.
+        """
+        cursor = self.conn.cursor()
+        try:
+            last_updated = self.last_updated()
+            now = int(time.time())
+            ref_ts = now - ONE_HOUR_SECS
+            logger.info(
+                f"load_games last_updated {last_updated}, comparison ts {ref_ts}"
+            )
+            if not force_update and last_updated and last_updated > ref_ts:
+                logging.info(f"games last updated {last_updated}, skipping refresh")
+                return False
+
+            existing_meta = {}
+            cursor.execute("select game_id, meta from games")
+            for row in cursor:
+                existing_meta[row[0]] = json.loads(row[1])
+
+            username = self.account["username"]
+            req = requests.get(
+                f"http://api.planets.nu/games/list?username={username}&scope=1"
+            )
+            games = req.json()
+            for game in games:
+                game_id = game["id"]
+                game_name = game["name"]
+                meta = existing_meta.get(game_id, {})
+                meta["last_updated"] = now
+                meta = json.dumps(meta)
+                data = json.dumps(game)
+                info = json.dumps(self.update_info(game["id"]))
+                cursor.execute(INSERT_GAME, (game_id, game_name, meta, data, info))
+            self.conn.commit()
+            return True
+        finally:
+            cursor.close()
+
+    def update_turn(self, game_id, turn_id=None) -> bool:
+        """Update the turn information for the given turn from the server."""
+        req_data = dict(gameid=game_id, apikey=self.account["apikey"])
+        if turn_id is not None:
+            req_data["turn"] = turn_id
+        res = requests.post("http://api.planets.nu/game/loadturn", data=req_data)
+        data = res.json()
+        if not data["success"]:
+            logger.warn(
+                f"update_turn game_id={game_id}, turn={turn_id}: {data['error']}"
+            )
+            return False
+        if turn_id is None:
+            turn_id = data["rst"]["game"]["turn"]
+        self.save_turn(game_id, turn_id, data)
+        return True
+
+    def update(self, force_update=False):
+        if not self.update_games(force_update):
+            return
+        cursor = self.conn.cursor()
+        try:
+            for game in self.games():
+                latest = game.data["turn"]
+                missing = {t for t in range(1, latest + 1) if t not in game.turns}
+                unavail = game.meta.get("unavailable_turns", [])
+                for t in unavail:
+                    missing.discard(t)
+                if not missing:
+                    continue
+                logger.info(f"loading turns {missing} for {game.name}")
+                for turn_id in missing:
+                    if not self.update_turn(game.game_id, turn_id):
+                        unavail.append(turn_id)
+                unavail = list(set(unavail))
+                unavail.sort()
+                game.meta["unavailable_turns"] = unavail
+                cursor.execute(
+                    "update games set meta = json(?) where game_id = ?",
+                    (json.dumps(game.meta), game.game_id),
+                )
+            self.conn.commit()
+        finally:
+            cursor.close()
+
+
+class PlanetsDBAsync(_PlanetsDB):
+    "asynchronous version"
+
+    async def update_info(self, game_id) -> dict:
+        req_data = dict(gameid=game_id)
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                "http://api.planets.nu/game/loadinfo", data=req_data
+            )
+            data = res.json()
+        return data
+
+    async def update_turn(self, game_id, turn_id=None) -> bool:
+        """Update the turn information for the given turn from the server."""
+        req_data = dict(gameid=game_id, apikey=self.account["apikey"])
+        if turn_id is not None:
+            req_data["turn"] = turn_id
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                "http://api.planets.nu/game/loadturn", data=req_data
+            )
+            data = res.json()
+        if not data["success"]:
+            logger.warn(
+                f"update_turn game_id={game_id}, turn={turn_id}: {data['error']}"
+            )
+            return False
+        if turn_id is None:
+            turn_id = data["rst"]["game"]["turn"]
+        self.save_turn(game_id, turn_id, data)
+        return True
+
+    async def update(self, force_update=False):
+        if not await self.update_games(force_update):
+            return
+        cursor = self.conn.cursor()
+        try:
+            for game in self.games():
+                latest = game.data["turn"]
+                missing = {t for t in range(1, latest + 1) if t not in game.turns}
+                unavail = game.meta.get("unavailable_turns", [])
+                for t in unavail:
+                    missing.discard(t)
+                if not missing:
+                    continue
+                logger.info(f"loading turns {missing} for {game.name}")
+                for turn_id in missing:
+                    if not await self.update_turn(game.game_id, turn_id):
+                        unavail.append(turn_id)
+                unavail = list(set(unavail))
+                unavail.sort()
+                game.meta["unavailable_turns"] = unavail
+                cursor.execute(
+                    "update games set meta = json(?) where game_id = ?",
+                    (json.dumps(game.meta), game.game_id),
+                )
+            self.conn.commit()
+        finally:
+            cursor.close()
+
+    async def update_games(self, force_update=False) -> bool:
+        """
+        Update the games table with latest information for each game.
+
+        If not force_update and the game data was last updated less than an
+        hour ago, returns False.
+        """
+        cursor = self.conn.cursor()
+        try:
+            last_updated = self.last_updated()
+            now = int(time.time())
+            ref_ts = now - ONE_HOUR_SECS
+            logger.info(
+                f"load_games last_updated {last_updated}, comparison ts {ref_ts}"
+            )
+            if not force_update and last_updated and last_updated > ref_ts:
+                logging.info(f"games last updated {last_updated}, skipping refresh")
+                return False
+
+            existing_meta = {}
+            cursor.execute("select game_id, meta from games")
+            for row in cursor:
+                existing_meta[row[0]] = json.loads(row[1])
+
+            username = self.account["username"]
+            async with httpx.AsyncClient() as client:
+                req = await client.get(
+                    f"http://api.planets.nu/games/list?username={username}&scope=1"
+                )
+                games = req.json()
+            for game in games:
+                game_id = game["id"]
+                game_name = game["name"]
+                meta = existing_meta.get(game_id, {})
+                meta["last_updated"] = now
+                meta = json.dumps(meta)
+                data = json.dumps(game)
+                info = json.dumps(await self.update_info(game["id"]))
+                cursor.execute(INSERT_GAME, (game_id, game_name, meta, data, info))
+            self.conn.commit()
+            return True
         finally:
             cursor.close()
