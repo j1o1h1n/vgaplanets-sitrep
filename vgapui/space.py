@@ -1,9 +1,12 @@
 import math
 import heapq
 
-from typing import Any, Dict, List, Tuple, Optional, NamedTuple
-from collections import defaultdict, deque
+from typing import Any, Optional, NamedTuple
+from collections import deque
 
+from .vgap import Turn
+
+PLANET = dict[str, Any]
 PLANET_ID = int
 STARBASE_ID = int
 
@@ -12,6 +15,18 @@ MAX_DIST = 81.5
 
 # maximum hops to a starbase for planet allocation
 MAX_SB_DIST = 3
+
+# planets in a single warp hop, typically 81 ly
+Neighbours = dict[PLANET_ID, list[tuple[float, PLANET_ID]]]
+
+# connected planet sets
+Clique = list[set[PLANET_ID]]
+
+# results of a range search
+RangeSearch = list[tuple[float, PLANET]]
+
+# shortest path between nodes in a clique
+ShortestPaths = dict[int, dict[int, int]]
 
 
 class Point(NamedTuple):
@@ -69,7 +84,7 @@ def build_kd_tree(points: list[dict], depth=0) -> Optional[KDNode]:
     )
 
 
-def k_nearest_neighbors(root: KDNode, target: dict, k: int):
+def k_nearest_neighbors(root: KDNode, target: KDNode, k: float | int) -> RangeSearch:
     """
     Find the k nearest points to the target in the kd-tree.
 
@@ -84,12 +99,12 @@ def k_nearest_neighbors(root: KDNode, target: dict, k: int):
     # Use a max-heap (store negative squared distance)
     best: list[tuple[float, dict]] = []  # Each entry is (-squared_distance, point)
 
-    def search(node, depth=0):
+    def search(node: KDNode | None, depth=0):
         if node is None:
             return
 
         # Compute squared Euclidean distance for efficiency.
-        dist_sq = sq_distance(target, node)
+        dist_sq = sq_distance(target.point, node.point)
 
         # If we don't have k points yet, push current one.
         # Otherwise, check if current point is closer than the farthest in our heap.
@@ -101,9 +116,9 @@ def k_nearest_neighbors(root: KDNode, target: dict, k: int):
         # Determine axis (0 for x, 1 for y)
         axis = depth % 2
         diff = (
-            target["x"] - node.point["x"]
+            target.point["x"] - node.point["x"]
             if axis == 0
-            else target["y"] - node.point["y"]
+            else target.point["y"] - node.point["y"]
         )
 
         if diff < 0:
@@ -129,7 +144,7 @@ def k_nearest_neighbors(root: KDNode, target: dict, k: int):
     return result
 
 
-def range_search(root, target, d):
+def range_search(root: KDNode | None, target: KDNode, d: float | int) -> RangeSearch:
     """
     Find all points within distance d from the target in the kd-tree.
 
@@ -144,20 +159,20 @@ def range_search(root, target, d):
     result = []
     d_sq = d * d  # work with squared distance for efficiency
 
-    def search(node, depth=0):
+    def search(node: KDNode | None, depth=0):
         if node is None:
             return
 
-        dist_sq = sq_distance(target, node)
+        dist_sq = sq_distance(target.point, node.point)
 
         if dist_sq <= d_sq:
-            result.append(node.point)
+            result.append((dist_sq, node.point))
 
         axis = depth % 2
         diff = (
-            target["x"] - node.point["x"]
+            target.point["x"] - node.point["x"]
             if axis == 0
-            else target["y"] - node.point["y"]
+            else target.point["y"] - node.point["y"]
         )
 
         # Always search the branch that is nearer first.
@@ -175,21 +190,22 @@ def range_search(root, target, d):
             search(far_branch, depth + 1)
 
     search(root)
+    result = [(math.sqrt(d_sq), p) for d_sq, p in result]
     return result
 
 
-def toroidal_coords(p, map_width: int, map_height: int):
-    "project the coordinates into the four mirrors"
-    x, y = p["x"], p["y"]
-    offsets = [
-        (0, 0),
-        (map_width, 0),
-        (-map_width, 0),
-        (0, map_height),
-        (0, -map_height),
-    ]
-    for dx, dy in offsets:
-        yield {"x": x + dx, "y": y + dy}
+# def toroidal_coords(p, map_width: int, map_height: int):
+#     "project the coordinates into the four mirrors"
+#     x, y = p["x"], p["y"]
+#     offsets = [
+#         (0, 0),
+#         (map_width, 0),
+#         (-map_width, 0),
+#         (0, map_height),
+#         (0, -map_height),
+#     ]
+#     for dx, dy in offsets:
+#         yield {"x": x + dx, "y": y + dy}
 
 
 def warp_well_coords(coords):
@@ -219,152 +235,334 @@ def warp_well_coords(coords):
             yield {"x": x + dx, "y": y + dy}
 
 
-def toroidal_distance(p, q, bottom_left: Point, top_right: Point) -> float:
-    "return the minimum toroidal distance"
-    map_width = top_right[0] - bottom_left[0]
-    map_height = top_right[1] - bottom_left[1]
-    return min(
-        distance(p, s)
-        for s in warp_well_coords(toroidal_coords(q, map_width, map_height))
-    )
+def x_warp_well_coords(p):
+    offsets = [
+        (0, -3),
+        (-3, 0),
+        (0, 3),
+        (3, 0),
+        (-2, -2),
+        (-2, 2),
+        (2, 2),
+        (2, -2),
+        (-1, -2),
+        (1, -2),
+        (-2, -1),
+        (2, -1),
+        (-2, 1),
+        (2, 1),
+        (1, 2),
+        (-1, 2),
+        (0, 2),
+        (0, -2),
+        (0, 0),
+    ]
+    x, y = p["x"], p["y"]
+    for dx, dy in offsets:
+        yield {"x": x + dx, "y": y + dy}
 
 
-def build_dist_matrix(
-    planets: List[Dict[Any, Any]],
-    max_dist: Optional[float] = None,
-    bottom_left: Optional[Point] = None,
-    top_right: Optional[Point] = None,
-) -> Dict[Tuple[int, int], float]:
-    """Returns a map of the distances between each pair of planets."""
-
-    distances = {}
-    num_planets = len(planets)
-
-    if bottom_left and top_right:
-
-        def dist(p, q):
-            return toroidal_distance(p, q, bottom_left, top_right)
-
-    else:
-
-        def dist(p, q):
-            return distance(p, q)
-
-    for i in range(num_planets):
-        for j in range(i + 1, num_planets):
-            d = dist(planets[i], planets[j])
-            if max_dist and d >= max_dist:
-                continue
-            distances[(planets[i]["id"], planets[j]["id"])] = d
-            distances[(planets[j]["id"], planets[i]["id"])] = d  # Symmetric
-
-    return distances
+# def toroidal_distance(p, q, bottom_left: Point, top_right: Point) -> float:
+#     "return the minimum toroidal distance"
+#     map_width = top_right[0] - bottom_left[0]
+#     map_height = top_right[1] - bottom_left[1]
+#     return min(
+#         distance(p, s)
+#         for s in warp_well_coords(toroidal_coords(q, map_width, map_height))
+#     )
 
 
-def build_cliques(
-    planets: List[Dict[Any, Any]],
-    max_dist: Optional[float] = None,
-    bottom_left: Optional[Point] = None,
-    top_right: Optional[Point] = None,
-) -> list[set[int]]:
-    "return list of planets connected by hops of max_dist"
-    dm = build_dist_matrix(planets, max_dist, bottom_left, top_right)
-    neighbours = defaultdict(set)
-    for p, q in dm:
-        neighbours[p].add(q)
-    cliques = []
+# def build_dist_matrix(
+#     planets: List[Dict[Any, Any]],
+#     max_dist: Optional[float] = None,
+#     bottom_left: Optional[Point] = None,
+#     top_right: Optional[Point] = None,
+# ) -> Dict[Tuple[int, int], float]:
+#     """Returns a map of the distances between each pair of planets."""
+
+#     distances = {}
+#     num_planets = len(planets)
+
+#     if bottom_left and top_right:
+
+#         def dist(p, q):
+#             return toroidal_distance(p, q, bottom_left, top_right)
+
+#     else:
+
+#         def dist(p, q):
+#             return distance(p, q)
+
+#     for i in range(num_planets):
+#         for j in range(i + 1, num_planets):
+#             d = dist(planets[i], planets[j])
+#             if max_dist and d >= max_dist:
+#                 continue
+#             distances[(planets[i]["id"], planets[j]["id"])] = d
+#             distances[(planets[j]["id"], planets[i]["id"])] = d  # Symmetric
+
+#     return distances
+
+
+# def build_cliques(
+#     planets: List[Dict[Any, Any]],
+#     max_dist: Optional[float] = None,
+#     bottom_left: Optional[Point] = None,
+#     top_right: Optional[Point] = None,
+# ) -> list[set[int]]:
+#     "return list of planets connected by hops of max_dist"
+#     dm = build_dist_matrix(planets, max_dist, bottom_left, top_right)
+#     neighbours = defaultdict(set)
+#     for p, q in dm:
+#         neighbours[p].add(q)
+#     cliques = []
+#     visited = set()
+#     for lead in neighbours:
+#         if lead in visited:
+#             continue
+#         visited.add(lead)
+#         clique = set()
+#         candidates = {lead}
+#         while candidates:
+#             p = candidates.pop()
+#             clique.add(p)
+#             visited.add(p)
+#             for q in neighbours[p]:
+#                 if q in clique or q in visited:
+#                     continue
+#                 candidates.add(q)
+#         cliques.append(clique)
+#     return cliques
+
+
+# def shortest_paths(
+#     neighbours: dict[PLANET_ID, set[PLANET_ID]], start_node: PLANET_ID
+# ) -> dict[PLANET_ID, int]:
+#     """
+#     Returns a dictionary where keys are nodes and values are the shortest number of steps
+#     from the given start_node.
+#     """
+#     steps = {start_node: 0}  # Distance from start_node to itself is 0
+#     queue = deque([start_node])
+
+#     while queue:
+#         node = queue.popleft()
+#         for neighbor in neighbours.get(node, []):
+#             if neighbor not in steps:  # Only process unvisited nodes
+#                 steps[neighbor] = steps[node] + 1
+#                 queue.append(neighbor)
+
+#     return steps
+
+
+# def build_graph(
+#     distances, my_planet_ids: set[PLANET_ID], max_dist=MAX_DIST
+# ) -> dict[PLANET_ID, set[PLANET_ID]]:
+#     "build a graph of connected planets"
+#     graph: dict[PLANET_ID, set[PLANET_ID]] = {}
+#     for a, b in distances:
+#         if a not in my_planet_ids or b not in my_planet_ids:
+#             continue
+#         d = distances[(a, b)]
+#         if d > max_dist:
+#             continue
+#         if a not in graph:
+#             graph[a] = set()
+#         if b not in graph:
+#             graph[b] = set()
+#         graph[a].add(b)
+#         graph[b].add(a)
+#     return graph
+
+
+def build_neighbours(turn: Turn, max_dist: int | float = 81) -> Neighbours:
+    "Returns a dict of neighbours for each planet, with distance"
+    spherical_map = SphericalMapSettings(turn)
+    kdtree = build_kd_tree(turn.planets())
+    planets = {p["id"]: p for p in turn.planets()}
+
+    neighbours: Neighbours = {}
+    for root_id in planets:
+        root_planet = planets[root_id]
+        s_coords = [xy for xy in spherical_map.project_coords(root_planet)]
+
+        # get a shortlist of candidates
+        candidates: dict[int, tuple[dict, float]] = {}
+        for xy in s_coords:
+            node = KDNode(xy)
+            for d, p in range_search(kdtree, node, max_dist + 5):
+                p_id = p["id"]
+                if p_id == root_id:
+                    continue
+                if p_id not in candidates or candidates[p_id][1] > d:
+                    candidates[p_id] = (xy, d)
+
+        # check whether the warpwell is reachable for each
+        neighbours[root_id] = []
+        for candidate_id in candidates:
+            target = planets[candidate_id]
+            xy = candidates[candidate_id][0]
+            for w_coord in x_warp_well_coords(target):
+                d = distance(xy, w_coord)
+                if d < max_dist + 0.5:
+                    neighbours[root_id].append((d, candidate_id))
+                    break
+        neighbours[root_id] = sorted(neighbours[root_id])
+    return neighbours
+
+
+def build_cliques(neighbours: Neighbours) -> Clique:
+    "Return list of planets connected by hops of max_dist, with the first clique the set of isolated planets"
+    cliques: Clique = [set()]
     visited = set()
-    for lead in neighbours:
-        if lead in visited:
+    for lead_id in neighbours:
+        if lead_id in visited:
             continue
-        visited.add(lead)
+        visited.add(lead_id)
         clique = set()
-        candidates = {lead}
+        candidates = {lead_id}
         while candidates:
             p = candidates.pop()
             clique.add(p)
             visited.add(p)
-            for q in neighbours[p]:
+            for _, q in neighbours[p]:
                 if q in clique or q in visited:
                     continue
                 candidates.add(q)
-        cliques.append(clique)
+        if len(clique) == 1:
+            cliques[0].add(clique.pop())
+        else:
+            cliques.append(clique)
     return cliques
 
 
-def infer_toroidal_map_settings(settings) -> tuple[Optional[Point], Optional[Point]]:
-    # FIXME verify this
-    magic_offset = 149
-    magic_padding = 20
-    mapshape = settings["mapshape"]
-    mapwidth = settings["mapwidth"]
-    mapheight = settings["mapheight"]
-    if mapshape != 1:
-        return None, None
-    true_width = mapwidth + magic_padding
-    true_height = mapheight + magic_padding
-    bottom_left = Point(true_width + magic_offset, true_height + magic_offset)
-    top_right = Point(bottom_left[0] + true_width, bottom_left[1] + true_height)
-    return bottom_left, top_right
+# def allocate_planets_to_starbases(turn: Turn) -> dict[PLANET_ID, STARBASE_ID]:
+#     allocation: dict[PLANET_ID, STARBASE_ID] = {}
+#     alloc_dist: dict[PLANET_ID, float] = {}
+
+#     my_planet_ids = {p["id"] for p in turn.planets(turn.player_id)}
+#     my_starbases = turn.starbases(turn.player_id)
+
+#     g = build_graph(turn.distances(), my_planet_ids)
+
+#     for sb in my_starbases:
+#         sb_planet = sb["planetid"]
+#         paths = shortest_paths(g, sb_planet)
+#         for p in paths:
+#             d = paths[p]
+#             if d > MAX_SB_DIST:
+#                 continue
+#             if p not in allocation or alloc_dist[p] > d:
+#                 allocation[p] = sb_planet
+#                 alloc_dist[p] = d
+#     return allocation
 
 
-def shortest_paths(
-    neighbours: dict[PLANET_ID, set[PLANET_ID]], start_node: PLANET_ID
-) -> dict[PLANET_ID, int]:
+def shortest_paths(cliques: Clique, neighbours: Neighbours) -> ShortestPaths:
     """
     Returns a dictionary where keys are nodes and values are the shortest number of steps
     from the given start_node.
     """
-    steps = {start_node: 0}  # Distance from start_node to itself is 0
-    queue = deque([start_node])
-
-    while queue:
-        node = queue.popleft()
-        for neighbor in neighbours.get(node, []):
-            if neighbor not in steps:  # Only process unvisited nodes
-                steps[neighbor] = steps[node] + 1
-                queue.append(neighbor)
-
-    return steps
-
-
-def build_graph(
-    distances, my_planet_ids: set[PLANET_ID], max_dist=MAX_DIST
-) -> dict[PLANET_ID, set[PLANET_ID]]:
-    "build a graph of connected planets"
-    graph: dict[PLANET_ID, set[PLANET_ID]] = {}
-    for a, b in distances:
-        if a not in my_planet_ids or b not in my_planet_ids:
-            continue
-        d = distances[(a, b)]
-        if d > max_dist:
-            continue
-        if a not in graph:
-            graph[a] = set()
-        if b not in graph:
-            graph[b] = set()
-        graph[a].add(b)
-        graph[b].add(a)
-    return graph
+    paths = {p: {p: 0} for p in cliques[0]}
+    for clique in cliques[1:]:
+        for start_node in clique:
+            steps = {start_node: 0}  # Distance from start_node to itself is 0
+            queue = deque([start_node])
+            while queue:
+                node = queue.popleft()
+                for _, neighbor in neighbours.get(node, []):
+                    if neighbor not in steps:  # Only process unvisited nodes
+                        steps[neighbor] = steps[node] + 1
+                        queue.append(neighbor)
+            paths[start_node] = steps
+    return paths
 
 
-def allocate_planets_to_starbases(turn) -> dict[PLANET_ID, STARBASE_ID]:
-    allocation: dict[PLANET_ID, STARBASE_ID] = {}
-    alloc_dist: dict[PLANET_ID, float] = {}
+class SphericalMapSettings:
 
-    my_planet_ids = {p["id"] for p in turn.planets(turn.player_id)}
-    my_starbases = turn.starbases(turn.player_id)
+    # FIXME verify this
+    magic_offset = 149
+    magic_padding = 20
 
-    g = build_graph(turn.distances(), my_planet_ids)
+    def __init__(self, turn):
+        settings = turn.rst["settings"]
+        mapshape = settings["mapshape"]
+        mapwidth = settings["mapwidth"]
+        mapheight = settings["mapheight"]
+        if mapshape != 1:
+            raise Exception("map is not spherical")
+        true_width = mapwidth + self.magic_padding
+        true_height = mapheight + self.magic_padding
+        self.bottom_left = Point(
+            true_width + self.magic_offset, true_height + self.magic_offset
+        )
+        self.top_right = Point(
+            self.bottom_left[0] + true_width, self.bottom_left[1] + true_height
+        )
+        self.map_width = self.top_right[0] - self.bottom_left[0]
+        self.map_height = self.top_right[1] - self.bottom_left[1]
 
-    for sb in my_starbases:
-        sb_planet = sb["planetid"]
-        paths = shortest_paths(g, sb_planet)
-        for p in paths:
-            d = paths[p]
-            if d > MAX_SB_DIST:
-                continue
-            if p not in allocation or alloc_dist[p] > d:
-                allocation[p] = sb_planet
-                alloc_dist[p] = d
-    return allocation
+    def project_coords(self, p: dict):
+        "returns the original coordinate and the projection into the four mirrors"
+        x, y = p["x"], p["y"]
+        offsets = [
+            (0, 0),
+            (self.map_width, 0),
+            (-self.map_width, 0),
+            (0, self.map_height),
+            (0, -self.map_height),
+        ]
+        for dx, dy in offsets:
+            yield {"x": x + dx, "y": y + dy}
+
+    def __repr__(self):
+        return f"<SphericalMapSettings bl: {self.bottom_left}, tr: {self.top_right}>"
+
+
+class Cluster:
+
+    def __init__(self, turn: Turn):
+        self.turn = turn
+        # FIXME handle non-spherical map
+        self.spherical_map = SphericalMapSettings(turn)
+        self.kdtree = build_kd_tree(turn.planets())
+        self.neighbours = build_neighbours(self.turn)
+        self.cliques = build_cliques(self.neighbours)
+        self.paths = shortest_paths(self.cliques, self.neighbours)
+
+    def allocate_planets_to_starbases(self) -> dict[PLANET_ID, STARBASE_ID]:
+        def levels(sb):
+            return sum(
+                sb[k]
+                for k in [
+                    "enginetechlevel",
+                    "hulltechlevel",
+                    "beamtechlevel",
+                    "torptechlevel",
+                ]
+            )
+
+        turn = self.turn
+        paths = self.paths
+        allocation: dict[PLANET_ID, STARBASE_ID] = {}
+
+        my_planet_ids = {p["id"] for p in turn.planets(turn.player_id)}
+
+        tech_sorted_starbases = reversed(
+            sorted(
+                (levels(sb), sb["planetid"]) for sb in turn.starbases(turn.player_id)
+            )
+        )
+        my_starbases = [sb for _, sb in tech_sorted_starbases]
+
+        for start_id in my_starbases:
+            path = {
+                p: d
+                for p, d in paths[start_id].items()
+                if d <= MAX_SB_DIST and p in my_planet_ids
+            }
+            for p in path:
+                prev = allocation.get(p)
+                if not prev or paths[prev][p] > path[p]:
+                    allocation[p] = start_id
+        return allocation

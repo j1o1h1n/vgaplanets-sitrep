@@ -183,8 +183,7 @@ class Turn:
         self.data = data
         self.rst = data["rst"]
         self.player_id = self.rst["player"]["id"]
-        self._distances = None
-        self._sectors = None
+        self._space = None
 
     def _filter_by_owner(self, category, filter_key, filter_value):
         """Helper function to filter objects by owner ID."""
@@ -208,31 +207,10 @@ class Turn:
             starbases = [s for s in starbases if s["planetid"] in planet_ids]
         return starbases
 
-    def distances(self):
-        if self._distances is None:
-            bottom_left, top_right = vgapui.space.infer_toroidal_map_settings(
-                self.rst["settings"]
-            )
-            self._distances = vgapui.space.build_dist_matrix(
-                self.planets(),
-                vgapui.space.MAX_DIST,
-                bottom_left=bottom_left,
-                top_right=top_right,
-            )
-        return self._distances
-
-    def sectors(self):
-        if self._sectors is None:
-            bottom_left, top_right = vgapui.space.infer_toroidal_map_settings(
-                self.rst["settings"]
-            )
-            self._sectors = vgapui.space.build_cliques(
-                self.planets(),
-                vgapui.space.MAX_DIST,
-                bottom_left=bottom_left,
-                top_right=top_right,
-            )
-        return self._sectors
+    def space(self):
+        if self._space is None:
+            self._space = vgapui.space.Space(self)
+        return self._space
 
 
 # game status codes
