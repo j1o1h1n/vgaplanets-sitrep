@@ -12,7 +12,6 @@ from textual.widgets import DataTable
 
 from rich.text import Text
 
-from . import space
 from . import vgap
 
 query_one = vgap.query_one
@@ -85,7 +84,7 @@ def build_econ_report(turn):
         for s, sector in enumerate(turn.sectors())
         for planet_id in sector
     }
-    sb_allocation = space.allocate_planets_to_starbases(turn)
+    sb_allocation = turn.cluster().allocate_planets_to_starbases()
 
     rows = [
         (

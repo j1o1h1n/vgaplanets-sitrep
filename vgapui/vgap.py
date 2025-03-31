@@ -13,7 +13,7 @@ import datetime
 from typing import NamedTuple, Optional, Any
 from pathlib import Path
 
-import vgapui.space
+from . import space
 
 logger = logging.getLogger(__name__)
 
@@ -178,12 +178,12 @@ class Player:
 
 class Turn:
 
-    def __init__(self, turn_id, data):
+    def __init__(self, turn_id: int, data: dict[str, Any]):
         self.turn_id = turn_id
         self.data = data
         self.rst = data["rst"]
         self.player_id = self.rst["player"]["id"]
-        self._space = None
+        self._cluster: space.Cluster | None = None
 
     def _filter_by_owner(self, category, filter_key, filter_value):
         """Helper function to filter objects by owner ID."""
@@ -207,10 +207,13 @@ class Turn:
             starbases = [s for s in starbases if s["planetid"] in planet_ids]
         return starbases
 
-    def space(self):
-        if self._space is None:
-            self._space = vgapui.space.Space(self)
-        return self._space
+    def cluster(self) -> space.Cluster:
+        if self._cluster is None:
+            self._cluster = space.Cluster(self)
+        return self._cluster
+
+    def sectors(self) -> space.Clique:
+        return self.cluster().cliques
 
 
 # game status codes
