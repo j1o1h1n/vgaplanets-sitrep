@@ -17,6 +17,14 @@ from . import space
 
 logger = logging.getLogger(__name__)
 
+SHIP_ID = int
+PLANET_ID = int
+STARBASE_ID = int
+PLANET = dict[str, Any]
+SHIP = dict[str, Any]
+STARBASE = dict[str, Any]
+PLANET_SHIP_MAP = dict[PLANET_ID, list[SHIP]]
+
 ONE_HOUR_SECS = 60 * 60
 
 LOAD_TURN = "http://api.planets.nu/game/loadturn"
@@ -185,21 +193,23 @@ class Turn:
         self.player_id = self.rst["player"]["id"]
         self._cluster: space.Cluster | None = None
 
-    def _filter_by_owner(self, category, filter_key, filter_value):
+    def _filter_by_owner(
+        self, category: str, filter_key: str, filter_value: int | None
+    ) -> list:
         """Helper function to filter objects by owner ID."""
         if filter_value is None:
             return self.rst[category]
         return [obj for obj in self.rst[category] if obj[filter_key] == filter_value]
 
-    def ships(self, player_id=None):
+    def ships(self, player_id: Optional[int] = None) -> list[SHIP]:
         """Return all ships owned by the specified player, or all ships if no player_id specified."""
         return self._filter_by_owner("ships", "ownerid", player_id)
 
-    def planets(self, player_id=None):
+    def planets(self, player_id: Optional[int] = None) -> list[PLANET]:
         """Return all planets owned by the specified player, or all planets if no player_id specified."""
         return self._filter_by_owner("planets", "ownerid", player_id)
 
-    def starbases(self, player_id=None):
+    def starbases(self, player_id: Optional[int] = None) -> list[STARBASE]:
         """Return all starbases owned by the specified player, or all starbases if no player_id specified."""
         starbases = self.rst["starbases"]
         if player_id:
@@ -243,7 +253,7 @@ class Game:
             if 0 in self.players:
                 del self.players[0]
 
-    def turn(self, turn_id=None):
+    def turn(self, turn_id: Optional[int] = None) -> Turn:
         """Return the given turn, or latest if no turn specified"""
         if turn_id is None:
             turn_id = max(self.turns.keys())

@@ -30,6 +30,7 @@ Button {
     border: panel #ff9c00;
 }
 
+
 .buttons {
     padding: 1 2 0 0;
     align: right bottom;
@@ -39,6 +40,19 @@ Button {
     height: auto;
     color: $text-primary;
     background: $primary-muted;
+}
+
+.rightrow {
+    height: auto;
+    background: $primary-muted;
+    align-horizontal: right;
+    padding: 0 2 0 0;
+}
+
+.infoline {
+    color: $text-accent;
+    text-align: right;
+    padding: 0 1 0 2;
 }
 
 .unseen {
@@ -65,4 +79,8 @@ Button {
     color: $text-accent;
     background: #646dcc;
     border: round #9c9cff;
+}
+
+.econtable {
+    border: ascii #ff0000;
 }

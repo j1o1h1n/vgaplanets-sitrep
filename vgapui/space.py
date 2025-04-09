@@ -1,14 +1,18 @@
 import math
 import heapq
 
-from typing import Any, Optional, NamedTuple
+from typing import Optional, NamedTuple, Any
 from collections import deque
 
 from . import vgap
 
-PLANET = dict[str, Any]
+SHIP_ID = int
 PLANET_ID = int
 STARBASE_ID = int
+PLANET = dict[str, Any]
+SHIP = dict[str, Any]
+STARBASE = dict[str, Any]
+PLANET_SHIP_MAP = dict[PLANET_ID, list[SHIP]]
 
 # max warp 9 distance
 MAX_DIST = 81.5
@@ -380,6 +384,21 @@ class Cluster:
         self.neighbours = build_neighbours(self.turn)
         self.cliques = build_cliques(self.neighbours)
         self.paths = shortest_paths(self.cliques, self.neighbours)
+
+    def ships_by_planets(self, player_id: Optional[int] = None) -> PLANET_SHIP_MAP:
+        "Return ships by planet id, with id 0 used for ships not at a planet"
+        ships = self.turn.ships(player_id)
+        ship_map: PLANET_SHIP_MAP = {}
+        for ship in ships:
+            res = range_search(self.kdtree, KDNode(ship), 0)
+            if not res:
+                continue
+            planet_id = res[0][1]["id"]
+            if planet_id not in ship_map:
+                ship_map[planet_id] = []
+            ship_map[planet_id].append(ship)
+
+        return ship_map
 
     def allocate_planets_to_starbases(self) -> dict[PLANET_ID, STARBASE_ID]:
         def levels(sb):
