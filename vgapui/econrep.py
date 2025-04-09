@@ -18,7 +18,6 @@ from . import vgap
 from .widgets import rule
 
 from collections import defaultdict
-from itertools import tee, filterfalse
 
 
 from .vgap import (
@@ -37,7 +36,7 @@ query_one = vgap.query_one
 logger = logging.getLogger(__name__)
 
 # red blue color range for planet temperature
-TEMPERATURE_COLOURS = [
+COLOURS = [
     "#4961d2",
     "#5875e1",
     "#6788ee",
@@ -48,7 +47,7 @@ TEMPERATURE_COLOURS = [
     "#bad0f8",
     "#c9d7f0",
     "#d6dce4",
-    "#daf0b6",
+    "#e3d9d3",
     "#edd1c2",
     "#f4c6af",
     "#f7b89c",
@@ -59,11 +58,6 @@ TEMPERATURE_COLOURS = [
     "#d55042",
     "#c53334",
 ]
-
-
-def partition(predicate, iterable):
-    it1, it2 = tee(iterable)
-    return list(filter(predicate, it1)), list(filterfalse(predicate, it2))
 
 
 def build_econ_report(turn: Turn) -> tuple[list[str], list[Any]]:
@@ -98,8 +92,8 @@ def build_econ_report(turn: Turn) -> tuple[list[str], list[Any]]:
 
     def planet_label(planet: PLANET, my_starbases: dict[PLANET_ID, STARBASE]) -> Text:
         t = planet["temp"]
-        idx = min(math.trunc(t / 5), len(TEMPERATURE_COLOURS) - 1)
-        c = TEMPERATURE_COLOURS[idx]
+        idx = min(math.trunc(t / 5), len(COLOURS) - 1)
+        c = COLOURS[idx]
         has_starbase = planet["id"] in my_starbases
         marker = "⨁" if has_starbase else "◯"
         return Text.assemble((marker, c), (f" P{planet['id']}-{planet['name']}", c))
@@ -119,7 +113,7 @@ def build_econ_report(turn: Turn) -> tuple[list[str], list[Any]]:
 
     rows = [
         (
-            (-sector_map[p["id"]], -sb_allocation.get(p["id"], 0), p["id"]),
+            (sector_map.get(p["id"], 0), sb_allocation.get(p["id"], 9999), p["id"]),
             sector_map.get(p["id"], 0),
             sb_allocation.get(p["id"], 0),
             planet_label(p, my_starbases),
@@ -131,6 +125,8 @@ def build_econ_report(turn: Turn) -> tuple[list[str], list[Any]]:
     rows.sort()
     # remove the sort key
     rows = [row[1:] for row in rows]
+    # put the isolated planets last
+    rows = rows[1:] + rows[:1]
 
     return cols, rows
 
@@ -186,7 +182,6 @@ class EconReportTableScreen(Screen):
 
     def compose(self) -> ComposeResult:
         self.update_data()
-        # map of sector to list of planet_ids (with starbases)
         sectors: dict[int, list[int]] = {}
         for row in self.rows:
             s, sb = row[:2]
@@ -195,16 +190,15 @@ class EconReportTableScreen(Screen):
             if sb not in sectors[s]:
                 sectors[s].append(sb)
 
-        def build_data_table(sector: int, planet_id: int) -> DataTable:
-            rows = [r[2:] for r in self.rows if r[0] == sector and r[1] == planet_id]
-            rows = rows[:1]
+        def build_data_table(sector: int, planetid: int) -> DataTable:
+            rows = [r[2:] for r in self.rows if r[0] == sector and r[1] == planetid]
             sums = [0] * (len(rows[-1]) - 2)
             for row in rows:
                 for col in range(len(sums)):
                     sums[col] += row[col + 1]
             rows.append(["Total"] + sums + [""])
 
-            table: DataTable = DataTable(classes="econtable")
+            table: DataTable = DataTable()
             table.add_columns(*self.cols[2:])
             table.add_rows(rows)
             return table
@@ -225,11 +219,11 @@ class EconReportTableScreen(Screen):
             c_id = f"er-collapsible-s{sector}"
             collapsed = not self.expanded[c_id]
             with Collapsible(id=c_id, title=title, collapsed=collapsed):
-                for planet_id in sectors[sector]:
-                    if planet_id:
-                        planet = self.my_planets[planet_id]
-                        starbase = self.my_starbases[planet_id]
-                        subtitle = f"Starbase P{planet_id}-{planet["name"]}"
+                for planetid in sectors[sector]:
+                    if planetid:
+                        planet = self.my_planets[planetid]
+                        starbase = self.my_starbases[planetid]
+                        subtitle = f"Starbase P{planetid}-{planet["name"]}"
                         if planet["defense"]:
                             subtitle += f" 🌐 {planet['defense']}"
                         if starbase["defense"]:
@@ -239,10 +233,10 @@ class EconReportTableScreen(Screen):
                     else:
                         subtitle = "No Starbase"
 
-                    p_id = f"er-collapsible-s{sector}-p{planet_id}"
+                    p_id = f"er-collapsible-s{sector}-p{planetid}"
                     collapsed = not self.expanded[p_id]
                     with Collapsible(id=p_id, title=subtitle, collapsed=collapsed):
-                        yield build_data_table(sector, planet_id)
+                        yield build_data_table(sector, planetid)
         yield Footer()
 
     def action_copy_data(self):

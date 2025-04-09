@@ -80,7 +80,3 @@ Button {
     background: #646dcc;
     border: round #9c9cff;
 }
-
-.econtable {
-    border: ascii #ff0000;
-}
