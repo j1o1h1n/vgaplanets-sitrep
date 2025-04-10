@@ -113,7 +113,7 @@ def build_econ_report(turn: Turn) -> tuple[list[str], list[Any]]:
 
     rows = [
         (
-            (sector_map.get(p["id"], 0), sb_allocation.get(p["id"], 9999), p["id"]),
+            (-sector_map.get(p["id"], 0), -sb_allocation.get(p["id"], 0), p["id"]),
             sector_map.get(p["id"], 0),
             sb_allocation.get(p["id"], 0),
             planet_label(p, my_starbases),
@@ -125,8 +125,6 @@ def build_econ_report(turn: Turn) -> tuple[list[str], list[Any]]:
     rows.sort()
     # remove the sort key
     rows = [row[1:] for row in rows]
-    # put the isolated planets last
-    rows = rows[1:] + rows[:1]
 
     return cols, rows
 
@@ -164,7 +162,6 @@ class EconReportTableScreen(Screen):
             new_turn_id = min(max(1, turn_id + delta), max(self.game.turns))
         if new_turn_id != self.turn.turn_id and new_turn_id in self.game.turns:
             self.turn = self.game.turn(new_turn_id)
-            # self.query_one("#turn_ruler", Label).update(f" Turn {self.turn.turn_id} ")
             self.refresh(recompose=True)
 
     def update_data(self):
@@ -192,6 +189,7 @@ class EconReportTableScreen(Screen):
 
         def build_data_table(sector: int, planetid: int) -> DataTable:
             rows = [r[2:] for r in self.rows if r[0] == sector and r[1] == planetid]
+
             sums = [0] * (len(rows[-1]) - 2)
             for row in rows:
                 for col in range(len(sums)):
@@ -215,6 +213,8 @@ class EconReportTableScreen(Screen):
             )
 
         for sector in sectors:
+            if not sectors[sector]:
+                continue
             title = f"Sector {sector}" if sector else "Isolated"
             c_id = f"er-collapsible-s{sector}"
             collapsed = not self.expanded[c_id]
@@ -237,6 +237,7 @@ class EconReportTableScreen(Screen):
                     collapsed = not self.expanded[p_id]
                     with Collapsible(id=p_id, title=subtitle, collapsed=collapsed):
                         yield build_data_table(sector, planetid)
+
         yield Footer()
 
     def action_copy_data(self):

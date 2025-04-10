@@ -139,17 +139,18 @@ class HorizontalRuleRenderable:
             left_cap, right_cap = self.cap_character[0], self.cap_character[1]
 
         body_width = self.width - len(self.title) - len(self.cap_character)
-        text_align = self.text_align
-        if text_align == "left":
-            body = character * body_width
-            segment = f"{left_cap}{self.title}{body}{right_cap}"
-        elif text_align == "right":
+        text_align = self.text_align or "left"
+        if text_align == "right":
             body = character * body_width
             segment = f"{left_cap}{body}{self.title}{right_cap}"
         elif text_align == "center":
             body = character * (body_width // 2)
             pad = character * (body_width % 2)
             segment = f"{left_cap}{body}{self.title}{body}{pad}{right_cap}"
+        else:
+            # TODO error on unknown text align?
+            body = character * body_width
+            segment = f"{left_cap}{self.title}{body}{right_cap}"
 
         yield Segment(segment, self.style)
 
