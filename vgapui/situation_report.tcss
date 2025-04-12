@@ -26,6 +26,16 @@ Button {
     background: $secondary-muted;
 }
 
+TransmissionPanel {
+    text-align: left;
+    border: round $accent;
+    padding: 2;
+    width: auto;
+    height: auto;
+    color: $primary;
+    background: $secondary-darken-3;
+}
+
 .standard_reports {
     border: panel #ff9c00;
 }

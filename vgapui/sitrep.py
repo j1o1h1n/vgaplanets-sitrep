@@ -2,7 +2,7 @@ from textual.app import App, ComposeResult
 from textual.screen import Screen
 from textual import on
 from textual.widgets import Header, Footer, OptionList
-from textual.containers import VerticalScroll
+from textual.containers import VerticalScroll, Center
 from textual.widgets import Label
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Static
@@ -15,6 +15,7 @@ import logging
 
 from . import vgap
 from . import econrep
+from . import transmission
 
 from typing import Optional
 
@@ -191,6 +192,13 @@ class ChooseGameScreen(Screen):
         yield Footer()
 
 
+class LoadingScreen(Screen):
+
+    def compose(self) -> ComposeResult:
+        with Center():
+            yield transmission.TransmissionPanel()
+
+
 class SituationReport(App):
 
     CSS_PATH = "situation_report.tcss"
@@ -213,11 +221,16 @@ class SituationReport(App):
                 self.settings[k] = {}
 
     async def on_mount(self):
-        await self.planets_db.update()
-        self.games = list(self.planets_db.games())
-        self.choose_game(self.settings["state"].get("game_id", None))
-        if self.game:
-            self.push_screen(ReportScreen(self.game))
+        if self.planets_db.requires_update():
+            self.run_worker(self.handle_update_games(), exclusive=True)
+            self.push_screen(LoadingScreen())
+        else:
+            self.games = list(self.planets_db.games())
+            self.choose_game(self.settings["state"].get("game_id", None))
+            if self.game:
+                self.push_screen(ReportScreen(self.game))
+            else:
+                self.push_screen(ChooseGameScreen(self.games))
 
     def on_unmount(self):
         self.planets_db.save_settings(self.settings)
@@ -258,18 +271,24 @@ class SituationReport(App):
             return
         game_id = int(button_id[1:])
         self.run_worker(self.handle_refresh_game(game_id), exclusive=True)
+        self.push_screen(LoadingScreen())
+
+    async def handle_update_games(self):
+        "update game data, call from worker"
+        await self.planets_db.update()
+        self.games = list(self.planets_db.games())
+        self.push_screen(ChooseGameScreen(self.games))
 
     async def handle_refresh_game(self, game_id):
         "refresh game data, call from worker"
-        self.log(f"refresh_game: update {game_id}")
         await self.planets_db.update(force_update=True)
 
-        game = query_one(self.games, lambda g: g.game_id == game_id)
-        turn_id = game.turn().turn_id
+        self.game = query_one(self.games, lambda g: g.game_id == game_id)
+        turn_id = self.game.turn().turn_id
         await planets_db.update_turn(game_id, turn_id)
 
         self.games = list(self.planets_db.games())
-        self.log("refresh_game: done")
+        self.push_screen(ReportScreen(self.game))
 
     @on(Button.Pressed, ".report")
     def report_pressed(self, event: Button.Pressed) -> None:

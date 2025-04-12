@@ -196,7 +196,7 @@ class EconReportTableScreen(Screen):
                     sums[col] += row[col + 1]
             rows.append(["Total"] + sums + [""])
 
-            table: DataTable = DataTable()
+            table: DataTable = DataTable(zebra_stripes=True)
             table.add_columns(*self.cols[2:])
             table.add_rows(rows)
             return table

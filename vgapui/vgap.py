@@ -333,6 +333,12 @@ class _PlanetsDB:
         finally:
             cursor.close()
 
+    def requires_update(self) -> bool:
+        last_updated = self.last_updated()
+        now = int(time.time())
+        stale_ts = last_updated + ONE_HOUR_SECS
+        return not last_updated or now > stale_ts
+
     def games(self) -> list[Game]:
         """Returns a list of Game"""
         query = """
@@ -431,18 +437,11 @@ class PlanetsDB(_PlanetsDB):
         If not force_update and the game data was last updated less than an
         hour ago, returns False.
         """
+        if not force_update and not self.requires_update():
+            return False
         cursor = self.conn.cursor()
         try:
-            last_updated = self.last_updated()
             now = int(time.time())
-            ref_ts = now - ONE_HOUR_SECS
-            logger.info(
-                f"load_games last_updated {last_updated}, comparison ts {ref_ts}"
-            )
-            if not force_update and last_updated and last_updated > ref_ts:
-                logging.info(f"games last updated {last_updated}, skipping refresh")
-                return False
-
             existing_meta = {}
             cursor.execute("select game_id, meta from games")
             for row in cursor:
