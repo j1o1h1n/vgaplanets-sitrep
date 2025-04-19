@@ -172,16 +172,11 @@ def create_score(data: dict[str, int]) -> Score:
     )
 
 
-class Player:
-
-    def __init__(self, id, raceid, racename, username):
-        self.id = id
-        self.raceid = raceid
-        self.racename = racename
-        self.username = username
-
-    def __repr__(self):
-        return f"<Player id={self.id}, name={self.username}, race={self.racename}>"
+class Player(NamedTuple):
+    player_id: int
+    race_id: int
+    name: str
+    race: str
 
 
 class Turn:

@@ -138,9 +138,10 @@ class EconReportTableScreen(Screen):
         (">", "next_turn", "Next Turn"),
     ]
 
-    def __init__(self, game, *args, racename="", **kwargs):
+    def __init__(self, game, *args, race="", **kwargs):
         super().__init__(*args, **kwargs)
-        self.sub_title = f"{game.data['name']} - {racename}"
+        self.title = "Econ Report"
+        self.sub_title = f"{game.data['name']} - {race}"
         self.game = game
         self.turn = self.game.turn()
         self.expanded = defaultdict(bool)
@@ -209,7 +210,6 @@ class EconReportTableScreen(Screen):
                 line_style="medium",
                 cap_style="round",
                 id="turn_ruler",
-                classes="infoline",
             )
 
         for sector in sectors:

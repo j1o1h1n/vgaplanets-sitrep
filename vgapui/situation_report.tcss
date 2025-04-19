@@ -36,6 +36,68 @@ TransmissionPanel {
     background: $secondary-darken-3;
 }
 
+/* ChoosePlayer modal */
+
+ChoosePlayer {
+    align: center middle;
+    border: ascii blue;
+}
+
+ChoosePlayer > Container {
+    width: auto;
+    height: auto;
+    padding: 1 3;
+    background: $panel;
+    border: round $warning-lighten-1;
+}
+
+ChoosePlayer > Container > Rule {
+    width: 100%;
+    margin: 0 0;
+    color: $warning-lighten-2;
+}
+
+ChoosePlayer > Container > RadioSet {
+    align: center middle;
+    background: $panel;
+    border: round $warning-lighten-2;
+}
+
+ChoosePlayer > Container > RadioSet {
+
+    /* when selected */
+    &.-selected {
+        background: $block-cursor-blurred-background;
+    }
+
+    /* when selected and parent has focus */
+    &:focus {
+        & > RadioButton.-selected {
+            color: $block-cursor-foreground;
+            text-style: $block-cursor-text-style;
+            background: $warning; /* $ block-cursor-background; */
+        }
+    }
+
+}
+
+ChoosePlayer > Container > Horizontal {
+    width: 100%;
+    height: auto;
+    align: center middle;
+}
+
+ChoosePlayer > Container > Horizontal > Button {
+    color: $secondary-darken-2;
+    background: $warning-darken-1;
+}
+
+EconReportTableScreen > Horizontal > Rule {
+    color: #ffcc99;
+    text-align: right;
+    padding: 0 1 0 2;
+}
+
 .standard_reports {
     border: panel #ff9c00;
 }
@@ -57,12 +119,6 @@ TransmissionPanel {
     background: $primary-muted;
     align-horizontal: right;
     padding: 0 2 0 0;
-}
-
-.infoline {
-    color: $text-accent;
-    text-align: right;
-    padding: 0 1 0 2;
 }
 
 .unseen {

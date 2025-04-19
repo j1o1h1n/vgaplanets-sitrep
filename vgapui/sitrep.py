@@ -1,13 +1,18 @@
-from textual.app import App, ComposeResult
-from textual.screen import Screen
 from textual import on
-from textual.widgets import Header, Footer, OptionList
-from textual.containers import VerticalScroll, Center
-from textual.widgets import Label
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Static
-from textual.widgets import DataTable
-from textual.widgets import Collapsible
+from textual.app import App, ComposeResult
+from textual.containers import Container, VerticalScroll, Center, Horizontal, Vertical
+from textual.screen import Screen, ModalScreen
+from textual.widgets import (
+    Label,
+    Header,
+    Footer,
+    Button,
+    Static,
+    DataTable,
+    Collapsible,
+    RadioSet,
+    RadioButton,
+)
 from rich.text import Text
 
 import getpass
@@ -16,6 +21,7 @@ import logging
 from . import vgap
 from . import econrep
 from . import transmission
+from .widgets import rule
 
 from typing import Optional
 
@@ -107,9 +113,9 @@ class ReportTableScreen(Screen):
 
     BINDINGS = [("c", "copy_data", "Copy")]
 
-    def __init__(self, rows, *args, racename="", **kwargs):
+    def __init__(self, rows, *args, race="", **kwargs):
         super().__init__(*args, **kwargs)
-        self.sub_title = racename
+        self.sub_title = race
         self.table = DataTable()
         self.table.add_columns(*rows[0])
         self.table.add_rows(rows[1:])
@@ -124,33 +130,77 @@ class ReportTableScreen(Screen):
         self.app.copy_to_clipboard(self.table_text)
 
 
+class ChoosePlayer(ModalScreen):
+
+    def __init__(self, players: dict[int, vgap.Player], *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.players = players
+
+    def compose(self) -> ComposeResult:
+        with Container():
+            yield rule.Rule.horizontal(
+                title="▥▥ SELECT PLAYER ▥▥",
+                line_style="medium",
+                cap_style="round",
+            )
+            with RadioSet():
+                for player in self.players.values():
+                    title = f"{player.race} - {player.name}"
+                    yield RadioButton(f"{title}", id=f"P{player.player_id}")
+
+    @on(RadioSet.Changed)
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        if event.pressed.id:
+            player_id = int(event.pressed.id[1:])
+            self.dismiss(player_id)
+
+
 class ReportScreen(Screen):
+
+    BINDINGS = [
+        ("p", "choose_player", "Player"),
+        ("escape", "pop_screen", "Pop the current screen"),
+    ]
 
     def __init__(self, game, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.game = game
-        self.player_options = ["Choose Player"] + [
-            f"P{p.id}-{p.username} {p.racename}" for p in self.game.players.values()
-        ]
-        self.selected_player = None
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        idx = event.option_index
-        vals = list(self.game.players.values())
-        if idx > 0:
-            self.selected_player = vals[idx - 1].id
+        self.selected_player = game.turn().player_id
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(classes="row standard_reports"):
             yield Static("Standard Reports", classes="header")
-            with Horizontal(classes="row"):
-                yield Button("Military", id="military", classes="report")
-                yield OptionList(
-                    *self.player_options, id="selected_player", classes="squash"
-                )
+            yield Button("Military", id="military", classes="report")
             yield Button("Economic", id="economic", classes="report")
         yield Footer()
+
+    def action_choose_player(self):
+        self.app.push_screen(ChoosePlayer(self.game.players), self.handle_choose_player)
+
+    def handle_choose_player(self, player_id):
+        self.selected_player = player_id
+
+    @on(Button.Pressed, ".report")
+    def report_pressed(self, event: Button.Pressed) -> None:
+        """Pressed a report button"""
+        assert event.button.id is not None
+        match event.button.id:
+            case "military":
+                if not self.selected_player:
+                    return
+                player = self.game.players[self.selected_player]
+                scores = self.game.scores()[player.player_id]
+                cols, data = build_milscore_report(scores)
+                rows = []
+                rows.append(cols)
+                rows.extend(data)
+                self.app.push_screen(ReportTableScreen(rows, race=player.race))
+            case "economic":
+                race = self.game.players[self.game.turn().player_id].race
+                self.app.push_screen(
+                    econrep.EconReportTableScreen(self.game, race=race)
+                )
 
 
 class ChooseGameScreen(Screen):
@@ -288,31 +338,7 @@ class SituationReport(App):
         await planets_db.update_turn(game_id, turn_id)
 
         self.games = list(self.planets_db.games())
-        self.push_screen(ReportScreen(self.game))
-
-    @on(Button.Pressed, ".report")
-    def report_pressed(self, event: Button.Pressed) -> None:
-        """Pressed a report button"""
-        assert event.button.id is not None
-        rows = []
-        player_id = None
-        cols = data = []
-        match event.button.id:
-            case "military":
-                player_id = self.query_one(ReportScreen).selected_player
-                racename = self.game.players[player_id].racename if player_id else ""
-                if not player_id:
-                    return
-                scores = self.game.scores()[player_id]
-                cols, data = build_milscore_report(scores)
-                rows.append(cols)
-                rows.extend(data)
-                self.push_screen(ReportTableScreen(rows, racename=racename))
-            case "economic":
-                racename = self.game.players[self.game.turn().player_id].racename
-                self.push_screen(
-                    econrep.EconReportTableScreen(self.game, racename=racename)
-                )
+        self.switch_screen(ReportScreen(self.game))
 
 
 planets_db = vgap.PlanetsDBAsync(DBFILE)
@@ -321,10 +347,7 @@ if not planets_db.account:
     password = getpass.getpass("Password: ")
     planets_db.login(username, password)
 
-# `textual run --dev vgapui.sitrep` will search for a
-# global variable named `app`, and fallback to
-# anything that is an instance of `App`, or
-# a subclass of `App`.
+# used by textual run
 app = SituationReport(planets_db)
 
 
