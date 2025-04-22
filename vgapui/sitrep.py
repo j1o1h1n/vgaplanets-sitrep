@@ -13,13 +13,18 @@ from textual.widgets import (
     RadioSet,
     RadioButton,
 )
+from textual_plotext import PlotextPlot
+
 from rich.text import Text
 
+import random
 import getpass
 import logging
 
 from . import vgap
 from . import econrep
+from . import freighters
+from . import graph
 from . import transmission
 from .widgets import rule
 
@@ -33,6 +38,17 @@ TURNSTATUS = {
     1: ("seen", "#d45f10"),
     2: ("ready", "#4bb0ff"),
 }
+
+ELITE = "🯰🯱🯲🯳🯴🯵🯶🯷🯸🯹"
+
+
+def elite(n):
+    chars = []
+    while n > 0:
+        chars.append(ELITE[n % 10])
+        n = n // 10
+    return "".join(reversed(chars))
+
 
 logger = logging.getLogger(__name__)
 query_one = vgap.query_one
@@ -111,11 +127,12 @@ def build_econ_report(game):
 
 class ReportTableScreen(Screen):
 
-    BINDINGS = [("c", "copy_data", "Copy")]
+    BINDINGS = [("c", "copy_data", "Copy"), ("d", "copy_json", "Export Diagram")]
 
-    def __init__(self, rows, *args, race="", **kwargs):
+    def __init__(self, rows, *args, json_data="", race="", **kwargs):
         super().__init__(*args, **kwargs)
         self.sub_title = race
+        self.json_data = json_data
         self.table = DataTable()
         self.table.add_columns(*rows[0])
         self.table.add_rows(rows[1:])
@@ -129,11 +146,21 @@ class ReportTableScreen(Screen):
     def action_copy_data(self):
         self.app.copy_to_clipboard(self.table_text)
 
+    def action_copy_json(self):
+        self.app.copy_to_clipboard(self.json_data)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Check if an action may run."""
+        if action == "copy_json" and not self.json_data:
+            return False
+        return True
+
 
 class ChoosePlayer(ModalScreen):
 
-    def __init__(self, players: dict[int, vgap.Player], *args, **kwargs):
+    def __init__(self, turn_id, players: dict[int, vgap.Player], *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.turn_id = turn_id
         self.players = players
 
     def compose(self) -> ComposeResult:
@@ -147,6 +174,12 @@ class ChoosePlayer(ModalScreen):
                 for player in self.players.values():
                     title = f"{player.race} - {player.name}"
                     yield RadioButton(f"{title}", id=f"P{player.player_id}")
+            yield rule.Rule.horizontal(
+                title=f"▥▥ †{elite(self.turn_id)} ▥▥",
+                line_style="medium",
+                cap_style="round",
+                classes="subtitle",
+            )
 
     @on(RadioSet.Changed)
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
@@ -158,28 +191,55 @@ class ChoosePlayer(ModalScreen):
 class ReportScreen(Screen):
 
     BINDINGS = [
-        ("p", "choose_player", "Player"),
         ("escape", "pop_screen", "Pop the current screen"),
+        ("[", "previous_graph", "Previous graph"),
+        ("]", "next_graph", "Next graph"),
+        ("t", "next_theme", "Next theme"),
+    ]
+
+    THEMES = [
+        "textual-clear",
+        "textual-dark",
+        "textual-default",
+        "textual-dreamland",
+        "textual-elegant",
+        "textual-girly",
+        "textual-grandpa",
+        "textual-matrix",
+        "textual-mature",
+        "textual-pro",
+        "textual-retro",
+        "textual-sahara",
+        "textual-salad",
+        "textual-scream",
+        "textual-serious",
+        "textual-windows",
     ]
 
     def __init__(self, game, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.game = game
-        self.selected_player = game.turn().player_id
+        self.graphs = list(graph.GRAPHS.keys())
+        self.graph_type_id = random.randint(0, len(self.graphs) - 1)
+        self.plot = PlotextPlot()
+        self.plot_theme = 10
+        self.plot.theme = self.THEMES[self.plot_theme]
+        self.plot_container = Container(self.plot)
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(classes="row standard_reports"):
+            yield self.plot_container
             yield Static("Standard Reports", classes="header")
-            yield Button("Military", id="military", classes="report")
-            yield Button("Economic", id="economic", classes="report")
+            with Horizontal():
+                yield Button("MilInt", id="military", classes="report")
+                yield Button("Econ", id="economic", classes="report")
+                yield Button("FreightTrac", id="freighter", classes="report")
         yield Footer()
 
-    def action_choose_player(self):
-        self.app.push_screen(ChoosePlayer(self.game.players), self.handle_choose_player)
-
-    def handle_choose_player(self, player_id):
-        self.selected_player = player_id
+    def on_mount(self):
+        plt = self.query_one(PlotextPlot).plt
+        graph.update_plot(self.game, plt, self.graphs[self.graph_type_id])
 
     @on(Button.Pressed, ".report")
     def report_pressed(self, event: Button.Pressed) -> None:
@@ -187,20 +247,67 @@ class ReportScreen(Screen):
         assert event.button.id is not None
         match event.button.id:
             case "military":
-                if not self.selected_player:
-                    return
-                player = self.game.players[self.selected_player]
-                scores = self.game.scores()[player.player_id]
-                cols, data = build_milscore_report(scores)
-                rows = []
-                rows.append(cols)
-                rows.extend(data)
-                self.app.push_screen(ReportTableScreen(rows, race=player.race))
+                self.app.push_screen(
+                    ChoosePlayer(max(self.game.turns.keys()), self.game.players),
+                    self.handle_mil_report,
+                )
             case "economic":
                 race = self.game.players[self.game.turn().player_id].race
                 self.app.push_screen(
                     econrep.EconReportTableScreen(self.game, race=race)
                 )
+            case "freighter":
+                self.app.push_screen(
+                    ChoosePlayer(max(self.game.turns.keys()), self.game.players),
+                    self.handle_freighter_report,
+                )
+
+    def handle_mil_report(self, player_id):
+        player = self.game.players[player_id]
+        scores = self.game.scores()[player_id]
+        cols, data = build_milscore_report(scores)
+        rows = []
+        rows.append(cols)
+        rows.extend(data)
+        self.app.push_screen(ReportTableScreen(rows, race=player.race))
+
+    def handle_freighter_report(self, player_id):
+        player = self.game.players[player_id]
+        rows = freighters.build_report(self.game, player_id)
+        json = freighters.build_drawing_data(self.game, player_id)
+        self.app.push_screen(ReportTableScreen(rows, json_data=json, race=player.race))
+
+    def replot(self) -> None:
+        """Set up the plot."""
+        plt = self.query_one(PlotextPlot).plt
+        name = self.graphs[self.graph_type_id]
+        self.plot_container.styles.animate("opacity", value=0.0, duration=0.6)
+
+        def fade_back():
+            graph.update_plot(self.game, plt, name)
+            self.plot_container.styles.animate(
+                "opacity", value=1.0, duration=0.5, easing="in_cubic"
+            )
+
+        self.set_timer(0.6, fade_back)
+
+    def action_next_graph(self) -> None:
+        self.graph_type_id = (self.graph_type_id + 1) % len(self.graphs)
+        self.replot()
+
+    def action_previous_graph(self) -> None:
+        self.graph_type_id -= 1
+        if self.graph_type_id < 0:
+            self.graph_type_id = len(self.graphs) - 1
+        self.replot()
+
+    def action_next_theme(self) -> None:
+        self.plot_theme = (self.plot_theme + 1) % len(self.THEMES)
+        self.plot.theme = self.THEMES[self.plot_theme]
+        self.notify(
+            title="Theme updated",
+            message=f"Theme is {self.THEMES[self.plot_theme]}.",
+        )
 
 
 class ChooseGameScreen(Screen):

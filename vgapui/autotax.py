@@ -46,9 +46,12 @@ AUTO_TAX_OPTS = {
 def get_planet_autotax(turn, planet_id):
     "Get the autotax settings for the planet"
     notes = turn.rst["notes"]
-    body = query_one(
+    note = query_one(
         notes, lambda n: n["targettype"] == 100 and n["targetid"] == planet_id
-    ).get("body", {})
+    )
+    if not note:
+        return None
+    body = note.get("body", {})
     return json.loads(body).get("name", "")
 
 
@@ -64,6 +67,9 @@ def calc_auto_tax(colony: PlanetColony, auto_tax: str) -> int:
 
     if colony.nativeclans == 0:
         return 0
+
+    if auto_tax is None:
+        return colony.nativetaxrate
 
     # Compute maximum income assuming full tax.
     maxincome = calc_native_tax_income(colony, 100)

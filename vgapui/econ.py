@@ -2,14 +2,7 @@ import math
 
 from typing import NamedTuple, Optional, Union
 
-from .vgap import query_one, Turn
-
-
-def get_player_race_name(turn: Turn) -> str:
-    "returns the adjective name for the plater race"
-    race_id = turn.rst["player"]["raceid"]
-    race = query_one(turn.rst["races"], lambda x: x["id"] == race_id)
-    return race["adjective"]
+from .vgap import query_one, get_player_race_name
 
 
 class PlanetResources(NamedTuple):
@@ -463,6 +456,13 @@ def calc_native_tax_rate_for_income(
     if calc_native_tax_income(colony, rate) < fullincome:
         return rate + 1
     return rate
+
+
+def calc_income(colony: PlanetColony) -> int:
+    """Return the income for the colony"""
+    colonist_tax_income = round(colony.clans / 100 * colony.colonisttaxrate / 10)
+    native_tax_income = calc_native_tax_income(colony)
+    return colonist_tax_income + native_tax_income
 
 
 def update_colony(

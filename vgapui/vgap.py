@@ -80,6 +80,13 @@ def query(items, filter_func):
     return [item for item in items if filter_func(item)]
 
 
+def get_player_race_name(turn: "Turn") -> str:
+    "returns the adjective name for the player race"
+    race_id = turn.rst["player"]["raceid"]
+    race = query_one(turn.rst["races"], lambda x: x["id"] == race_id)
+    return race["adjective"]
+
+
 class Score(NamedTuple):
     turn_id: int
     player_id: int
@@ -188,7 +195,7 @@ class Turn:
         self.player_id = self.rst["player"]["id"]
         self._cluster: space.Cluster | None = None
 
-    def _filter_by_owner(
+    def filter_objs(
         self, category: str, filter_key: str, filter_value: int | None
     ) -> list:
         """Helper function to filter objects by owner ID."""
@@ -196,13 +203,21 @@ class Turn:
             return self.rst[category]
         return [obj for obj in self.rst[category] if obj[filter_key] == filter_value]
 
+    def stockpile(self, rsrc: str, player_id: int | None = None) -> int:
+        "Returns the total amount of the given resource, on owned planets and ships"
+        if player_id is None:
+            player_id = self.player_id
+        val = sum([p.get(rsrc, 0) for p in self.planets(player_id)])
+        val += sum([s.get(rsrc, 0) for s in self.ships(player_id)])
+        return val
+
     def ships(self, player_id: Optional[int] = None) -> list[SHIP]:
         """Return all ships owned by the specified player, or all ships if no player_id specified."""
-        return self._filter_by_owner("ships", "ownerid", player_id)
+        return self.filter_objs("ships", "ownerid", player_id)
 
     def planets(self, player_id: Optional[int] = None) -> list[PLANET]:
         """Return all planets owned by the specified player, or all planets if no player_id specified."""
-        return self._filter_by_owner("planets", "ownerid", player_id)
+        return self.filter_objs("planets", "ownerid", player_id)
 
     def starbases(self, player_id: Optional[int] = None) -> list[STARBASE]:
         """Return all starbases owned by the specified player, or all starbases if no player_id specified."""
