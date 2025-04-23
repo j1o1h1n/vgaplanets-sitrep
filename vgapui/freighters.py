@@ -344,7 +344,7 @@ def get_diplomacy_color(turn: Turn, player_id: int) -> RGB:
 def shade(hex_color: RGB, percent: float = -0.1) -> RGB:
     hex_color = hex_color.lstrip("#")
     if len(hex_color) != 6:
-        raise ValueError("Hex color must be in the format #RRGGBB")
+        raise ValueError(f"Hex color must be in the format #RRGGBB, was {hex_color}")
 
     r = int(hex_color[0:2], 16)
     g = int(hex_color[2:4], 16)

@@ -113,9 +113,26 @@ ReportScreen > Vertical > Horizontal > Button {
     align: right bottom;
 }
 
+ReportTableScreen > VerticalScroll {
+    background: #846f5b;
+}
 
-EconReportTableScreen > Horizontal > Rule {
-    color: #ffcc99;
+ReportTableScreen > VerticalScroll > DataTable {
+    border: hkey #cc99cc;
+}
+
+EconReportTableScreen {
+    background: #222227;
+}
+
+EconReportTableScreen > Container {
+    height: auto;
+    border: hkey $warning;
+    background: $panel-lighten-1;
+}
+
+EconReportTableScreen > Container > Horizontal > Rule {
+    color: $warning;
     text-align: right;
     padding: 0 1 0 2;
 }

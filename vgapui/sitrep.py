@@ -133,14 +133,15 @@ class ReportTableScreen(Screen):
         super().__init__(*args, **kwargs)
         self.sub_title = race
         self.json_data = json_data
-        self.table = DataTable()
+        self.table = DataTable(zebra_stripes=True)
         self.table.add_columns(*rows[0])
         self.table.add_rows(rows[1:])
         self.table_text = "\n".join(["\t".join([str(c) for c in row]) for row in rows])
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield VerticalScroll(self.table)
+        with VerticalScroll():
+            yield self.table
         yield Footer()
 
     def action_copy_data(self):

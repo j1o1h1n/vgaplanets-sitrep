@@ -4,7 +4,7 @@ import logging
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Header, Footer
-from textual.containers import Horizontal
+from textual.containers import Container, Horizontal
 
 from typing import Any
 
@@ -133,9 +133,9 @@ class EconReportTableScreen(Screen):
 
     BINDINGS = [
         ("c", "copy_data", "Copy"),
-        ("<", "prev_turn", "Prev Turn"),
-        (".", "current_turn", "Current Turn"),
-        (">", "next_turn", "Next Turn"),
+        ("[", "prev_turn", "Prev Turn"),
+        ("space", "current_turn", "Current Turn"),
+        ("]", "next_turn", "Next Turn"),
     ]
 
     def __init__(self, game, *args, race="", **kwargs):
@@ -203,40 +203,41 @@ class EconReportTableScreen(Screen):
             return table
 
         yield Header()
-        with Horizontal(classes="rightrow"):
-            turn_title = f"▥▥ Turn {self.turn.turn_id} ▥▥"
-            yield rule.Rule.horizontal(
-                title=turn_title,
-                line_style="medium",
-                cap_style="round",
-                id="turn_ruler",
-            )
+        with Container():
+            with Horizontal(classes="rightrow"):
+                turn_title = f"▥▥ Turn {self.turn.turn_id} ▥▥"
+                yield rule.Rule.horizontal(
+                    title=turn_title,
+                    line_style="medium",
+                    cap_style="round",
+                    id="turn_ruler",
+                )
 
-        for sector in sectors:
-            if not sectors[sector]:
-                continue
-            title = f"Sector {sector}" if sector else "Isolated"
-            c_id = f"er-collapsible-s{sector}"
-            collapsed = not self.expanded[c_id]
-            with Collapsible(id=c_id, title=title, collapsed=collapsed):
-                for planetid in sectors[sector]:
-                    if planetid:
-                        planet = self.my_planets[planetid]
-                        starbase = self.my_starbases[planetid]
-                        subtitle = f"Starbase P{planetid}-{planet["name"]}"
-                        if planet["defense"]:
-                            subtitle += f" 🌐 {planet['defense']}"
-                        if starbase["defense"]:
-                            subtitle += f" 🛡️ {starbase['defense']}"
-                        if starbase["fighters"]:
-                            subtitle += f" ➢➢ {starbase['fighters']}"
-                    else:
-                        subtitle = "No Starbase"
+            for sector in sectors:
+                if not sectors[sector]:
+                    continue
+                title = f"Sector {sector}" if sector else "Isolated"
+                c_id = f"er-collapsible-s{sector}"
+                collapsed = not self.expanded[c_id]
+                with Collapsible(id=c_id, title=title, collapsed=collapsed):
+                    for planetid in sectors[sector]:
+                        if planetid:
+                            planet = self.my_planets[planetid]
+                            starbase = self.my_starbases[planetid]
+                            subtitle = f"Starbase P{planetid}-{planet["name"]}"
+                            if planet["defense"]:
+                                subtitle += f" 🌐 {planet['defense']}"
+                            if starbase["defense"]:
+                                subtitle += f" 🛡️ {starbase['defense']}"
+                            if starbase["fighters"]:
+                                subtitle += f" ➢➢ {starbase['fighters']}"
+                        else:
+                            subtitle = "No Starbase"
 
-                    p_id = f"er-collapsible-s{sector}-p{planetid}"
-                    collapsed = not self.expanded[p_id]
-                    with Collapsible(id=p_id, title=subtitle, collapsed=collapsed):
-                        yield build_data_table(sector, planetid)
+                        p_id = f"er-collapsible-s{sector}-p{planetid}"
+                        collapsed = not self.expanded[p_id]
+                        with Collapsible(id=p_id, title=subtitle, collapsed=collapsed):
+                            yield build_data_table(sector, planetid)
 
         yield Footer()
 
