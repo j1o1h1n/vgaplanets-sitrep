@@ -20,7 +20,7 @@ RuleOrientation = Literal["horizontal", "vertical"]
 
 LineStyle = Literal[
     "ascii",
-    "blank",
+    "none",
     "dashed",
     "double",
     "heavy",
@@ -33,7 +33,7 @@ LineStyle = Literal[
 """The valid line styles of the rule widget."""
 
 CapStyle = Literal[
-    "blank",
+    "none",
     "round",
     "triangle",
 ]
@@ -43,7 +43,7 @@ _VALID_RULE_ORIENTATIONS = {"horizontal", "vertical"}
 
 _VALID_LINE_STYLES = {
     "ascii",
-    "blank",
+    "none",
     "dashed",
     "double",
     "heavy",
@@ -55,14 +55,14 @@ _VALID_LINE_STYLES = {
 }
 
 _VALID_CAP_STYLES = {
-    "blank",
+    "none",
     "round",
     "triangle",
 }
 
 _HORIZONTAL_LINE_CHARS: dict[LineStyle, str] = {
     "ascii": "-",
-    "blank": " ",
+    "none": " ",
     "dashed": "╍",
     "double": "═",
     "heavy": "━",
@@ -75,7 +75,7 @@ _HORIZONTAL_LINE_CHARS: dict[LineStyle, str] = {
 
 _VERTICAL_LINE_CHARS: dict[LineStyle, str] = {
     "ascii": "|",
-    "blank": " ",
+    "none": " ",
     "dashed": "╏",
     "double": "║",
     "heavy": "┃",
@@ -89,13 +89,13 @@ _VERTICAL_LINE_CHARS: dict[LineStyle, str] = {
 _HORIZONTAL_CAP_CHARS: dict[CapStyle, str] = {
     "round": "◖◗",
     "triangle": "◀▶",
-    "blank": "",
+    "none": "",
 }
 
 _VERTICAL_CAP_CHARS: dict[CapStyle, str] = {
     "round": "◚◛",
     "triangle": "▲▼",
-    "blank": "",
+    "none": "",
 }
 
 
@@ -214,7 +214,7 @@ class Rule(Widget, can_focus=False):
         title="",
         orientation: RuleOrientation = "horizontal",
         line_style: LineStyle = "solid",
-        cap_style: CapStyle = "blank",
+        cap_style: CapStyle = "none",
         *,
         name: str | None = None,
         id: str | None = None,
@@ -312,7 +312,7 @@ class Rule(Widget, can_focus=False):
         cls,
         title="",
         line_style: LineStyle = "solid",
-        cap_style: CapStyle = "blank",
+        cap_style: CapStyle = "none",
         name: str | None = None,
         id: str | None = None,
         classes: str | None = None,
@@ -346,7 +346,7 @@ class Rule(Widget, can_focus=False):
         cls,
         title="",
         line_style: LineStyle = "solid",
-        cap_style: CapStyle = "blank",
+        cap_style: CapStyle = "none",
         name: str | None = None,
         id: str | None = None,
         classes: str | None = None,

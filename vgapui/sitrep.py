@@ -23,6 +23,7 @@ import logging
 
 from . import vgap
 from . import econrep
+from . import msglog
 from . import freighters
 from . import graph
 from . import transmission
@@ -233,19 +234,19 @@ class ReportScreen(Screen):
             yield self.plot_container
             yield Static("Standard Reports", classes="header")
             with Horizontal():
-                yield Button("MilInt", id="military", classes="report")
-                yield Button("Econ", id="economic", classes="report")
-                yield Button("FreightTrac", id="freighter", classes="report")
+                yield Button("MilInt", id="military")
+                yield Button("Econ", id="economic")
+                yield Button("FreightTrac", id="freighter")
+                yield Button("MsgLog", id="msgs")
         yield Footer()
 
     def on_mount(self):
         plt = self.query_one(PlotextPlot).plt
         graph.update_plot(self.game, plt, self.graphs[self.graph_type_id])
 
-    @on(Button.Pressed, ".report")
+    @on(Button.Pressed)
     def report_pressed(self, event: Button.Pressed) -> None:
         """Pressed a report button"""
-        assert event.button.id is not None
         match event.button.id:
             case "military":
                 self.app.push_screen(
@@ -262,6 +263,8 @@ class ReportScreen(Screen):
                     ChoosePlayer(max(self.game.turns.keys()), self.game.players),
                     self.handle_freighter_report,
                 )
+            case "msgs":
+                self.app.push_screen(msglog.MessagesScreen(self.game))
 
     def handle_mil_report(self, player_id):
         player = self.game.players[player_id]

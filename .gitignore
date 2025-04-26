@@ -4,3 +4,5 @@
 *.db-*
 *.ipynb
 +vgapui
+examples
+.DS_Store
