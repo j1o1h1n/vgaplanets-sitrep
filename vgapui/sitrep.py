@@ -128,7 +128,11 @@ def build_econ_report(game):
 
 class ReportTableScreen(Screen):
 
-    BINDINGS = [("c", "copy_data", "Copy"), ("d", "copy_json", "Export Diagram")]
+    BINDINGS = [
+        ("c", "copy_data", "Copy"),
+        ("x", "copy_json", "Export Diagram"),
+        ("z", "copy_json_shim", "Copy Export JS Shim"),
+    ]
 
     def __init__(self, rows, *args, json_data="", race="", **kwargs):
         super().__init__(*args, **kwargs)
@@ -138,6 +142,9 @@ class ReportTableScreen(Screen):
         self.table.add_columns(*rows[0])
         self.table.add_rows(rows[1:])
         self.table_text = "\n".join(["\t".join([str(c) for c in row]) for row in rows])
+
+    def on_mount(self):
+        self.refresh_bindings()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -149,11 +156,16 @@ class ReportTableScreen(Screen):
         self.app.copy_to_clipboard(self.table_text)
 
     def action_copy_json(self):
-        self.app.copy_to_clipboard(self.json_data)
+        self.app.copy_to_clipboard(f"install_drawing({self.json_data})")
+
+    def action_copy_json_shim(self):
+        self.app.copy_to_clipboard(freighters.INSTALL_DRAWING_JS)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Check if an action may run."""
         if action == "copy_json" and not self.json_data:
+            return False
+        if action == "copy_json_shim" and not self.json_data:
             return False
         return True
 

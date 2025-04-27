@@ -1,5 +1,5 @@
 """
-A report that shows all the frieghetrs sightings for a player.
+A report that shows all the freighters sightings for a player.
 
 The report can be copied as a JS drawing for pasting into the VGA Planets UI.
 """
@@ -10,7 +10,7 @@ import json
 
 from .vgap import query_one, query, Game, Turn
 
-INSTALL_DRAWING = """
+INSTALL_DRAWING_JS = """
 install_drawing = function(layer) {
     const overlays = vgap.map.drawingtool.overlays;
 
@@ -408,7 +408,7 @@ def build_drawing_data(game, player_id):
             lines[point].append((target, col))
 
     markups = []
-    race = rows[0]["player_race"]
+    race = rows[0]["player_race"] if rows else "unknown"
     note = {"name": f"{race} Freighters", "active": True, "markups": markups}
     for coords in points:
         x, y = coords
