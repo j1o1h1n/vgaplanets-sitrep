@@ -24,6 +24,7 @@ Button {
 TransmissionPanel {
     text-align: left;
     border: round $accent;
+    margin: 8;
     padding: 2;
     width: auto;
     height: auto;
@@ -91,6 +92,33 @@ ChoosePlayer > Container > Horizontal > Button {
     background: $warning-darken-1;
 }
 
+/* Choose Game */
+
+ChooseGameScreen > Collapsible {
+    height: auto;
+    margin: 0 1 0 1;
+}
+
+Button.game_chooser {
+    margin: 0 0 1 0;
+}
+
+Button.refresh_game {
+    margin: 0 0 0 0;
+}
+
+.unseen {
+    border: solid #e7ffff;
+}
+
+.seen {
+    border: solid #d45f10;
+}
+
+.ready {
+    border: panel #4bb0ff;
+}
+
 
 ReportScreen > Vertical {
     height: auto;
@@ -98,7 +126,6 @@ ReportScreen > Vertical {
     background: $primary-muted;
     border: panel #ff9c00;
 }
-
 
 ReportScreen > Vertical > Static {
     margin: 1 0 1 1;
@@ -189,18 +216,6 @@ Sidebar > RadioSet > RadioButton {
     background: $primary-muted;
     align-horizontal: right;
     padding: 0 2 0 0;
-}
-
-.unseen {
-    border: solid #e7ffff;
-}
-
-.seen {
-    border: solid #d45f10;
-}
-
-.ready {
-    border: panel #4bb0ff;
 }
 
 .squash {

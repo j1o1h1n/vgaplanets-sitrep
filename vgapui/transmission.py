@@ -33,6 +33,16 @@ COLORS = [
     "primary-darken-3",
 ]
 
+BORDER_COLORS = [
+    "accent-lighten-2",
+    "accent-lighten-2",
+    "accent-lighten-2",
+    "accent-lighten-1",
+    "accent-lighten-1",
+    "accent",
+    "accent",
+]
+
 
 def find_all(text, chars):
     """Returns a list of indexes of all occurrences of any character in 'chars' in 'text'."""
@@ -68,32 +78,28 @@ class TransmissionPanel(Static):
         transmission = "".join(fragments)
         self.step = (self.step + 1) % len(COLORS)
         self.styles.color = self.app.theme_variables[COLORS[self.step]]
+        border_color = self.app.theme_variables[BORDER_COLORS[self.step]]
+        self.styles.border = ("round", border_color)
 
         self.update(f"{transmission}\n               {self.star_text}")
 
 
 class TransmissionApp(App):
-    CSS = """
-    Screen {
-        background: black;
-        color: white;
-    }
 
-    TransmissionPanel {
-        text-align: left;
-        border: round $accent;
-        padding: 2;
-        width: auto;
-        height: auto;
-        color: $primary;
-        background: $secondary-darken-3;
-    }
-    """
+    CSS_PATH = "situation_report.tcss"
 
     def compose(self) -> ComposeResult:
         with Center():
             yield TransmissionPanel()
 
 
+# used by textual run
+app = TransmissionApp()
+
+
+def main():
+    app.run()
+
+
 if __name__ == "__main__":
-    TransmissionApp().run()
+    main()

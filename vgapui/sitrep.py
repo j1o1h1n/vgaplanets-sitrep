@@ -345,23 +345,21 @@ class ChooseGameScreen(Screen):
             res.extend([("•", status), f" {name} ({race})\n"])
         return Text.assemble(*res)
 
+    def gen_game_info(self, game):
+        label = Label(self.build_turn_info(game))
+        title = f"{game.name} - T#{game.info['game']['turn']}"
+        player_id = game.turn().player_id
+        player = query_one(game.info["players"], lambda p: p["id"] == player_id)
+        player_turn_status = TURNSTATUS[player["turnstatus"]][0]
+        with Collapsible(collapsed=True, title=title, classes=player_turn_status):
+            yield label
+            yield Button("Select 🚀", id=f"g{game.game_id}", classes="game_chooser")
+            yield Button("Refresh ♻️", id=f"r{game.game_id}", classes="refresh_game")
+
     def compose(self) -> ComposeResult:
         yield Header()
         for game in self.games:
-            label = Label(self.build_turn_info(game))
-            title = f"{game.name} - T#{game.info['game']['turn']}"
-            player_id = game.turn().player_id
-            player = query_one(game.info["players"], lambda p: p["id"] == player_id)
-            player_turn_status = TURNSTATUS[player["turnstatus"]][0]
-            with Vertical(classes=f"row {player_turn_status}"):
-                yield Collapsible(label, collapsed=True, title=title)
-                with Horizontal(classes="row buttons"):
-                    yield Button(
-                        "Select", id=f"g{game.game_id}", classes="game_chooser"
-                    )
-                    yield Button(
-                        "Refresh", id=f"r{game.game_id}", classes="refresh_game"
-                    )
+            yield from self.gen_game_info(game)
         yield Footer()
 
 
