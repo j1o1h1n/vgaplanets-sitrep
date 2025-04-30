@@ -2,6 +2,8 @@
 Build plots of interesting information.
 """
 
+import math
+
 from . import econ
 from . import vgap
 
@@ -51,8 +53,6 @@ def get_graph_data(game: vgap.Game, name: str) -> tuple[str, list[int]]:
 
 
 def human_readable_ticks(ymin, ymax, n_ticks=5, abbreviate=True):
-    import math
-
     # Calculate a nice step size
     span = ymax - ymin
     raw_step = span / (n_ticks - 1)
