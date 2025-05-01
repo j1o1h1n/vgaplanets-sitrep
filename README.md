@@ -1,6 +1,20 @@
 
+## Install
+
+```
+pip install textual requests httpx textual_plotext
+```
+
+```
+pip install textual-dev
+```
+
+## Dev Cycle
+
+```
 textual console
 
-textual run --dev vgapui.sitrep
+textual run --dev sitrep.sitrep
 
-black vgapui && flake8 vgapui/*.py && black vgapui && mypy vgapui && textual run --dev vgapui.sitrep
+black sitrep && flake8 sitrep && black sitrep && mypy sitrep && textual run --dev sitrep.sitrep
+```

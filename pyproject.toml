@@ -1,10 +1,6 @@
 [project]
-name = "vgapui"
+name = "siterep"
 version = "0.1"
-
-# [project.scripts]
-# dict = "app.entry_points:dict"
-# primer = "app.entry_points:primer"
 
 [build-system]
 requires = ["setuptools"]

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from textual.app import App, ComposeResult
-
 from rich.console import Console, ConsoleOptions
 from rich.segment import Segment
 from rich.style import Style
@@ -48,7 +46,6 @@ _VALID_LINE_STYLES = {
     "double",
     "heavy",
     "hidden",
-    "none",
     "solid",
     "thick",
     "medium",
@@ -67,7 +64,6 @@ _HORIZONTAL_LINE_CHARS: dict[LineStyle, str] = {
     "double": "═",
     "heavy": "━",
     "hidden": " ",
-    "none": " ",
     "solid": "─",
     "thick": "█",
     "medium": "■",
@@ -80,7 +76,6 @@ _VERTICAL_LINE_CHARS: dict[LineStyle, str] = {
     "double": "║",
     "heavy": "┃",
     "hidden": " ",
-    "none": " ",
     "solid": "│",
     "thick": "█",
     "medium": "▐",
@@ -193,7 +188,7 @@ class Rule(Widget, can_focus=False):
     Rule.-horizontal {
         height: 1;
         margin: 1 0;
-        width: 1fr;      
+        width: 1fr;
     }
 
     Rule.-vertical {

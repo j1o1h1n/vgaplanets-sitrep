@@ -262,16 +262,12 @@ def get_hulls(game: Game) -> dict[int, REC]:
 def init(game: Game) -> dict[int, SHIP]:
     """Build a dict freights, by hull id"""
     hulls = get_hulls(game)
-    ships: list[SHIP] = list(
-        filter(
-            None,
-            [
-                query_one(hulls.values(), lambda h: h["name"] == name)
-                for name in FREIGHTER_NAMES
-            ],
-        )
-    )
-    return {int(s["id"]): s for s in ships}
+
+    def lookup_hull(name):
+        return query_one(hulls.values(), lambda h: h["name"] == name)
+
+    ships = [lookup_hull(name) for name in FREIGHTER_NAMES]
+    return {int(s["id"]): s for s in ships if s}
 
 
 def lookup(game: Game, turn: Turn, ship: SHIP, key: str) -> str | int:
