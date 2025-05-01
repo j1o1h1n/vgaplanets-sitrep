@@ -4,7 +4,7 @@ View information about your VGA Planets games from the convenience of the termin
 
 ## Install
 
-To install this project, download from githu=b and install these dependencies.
+To install this project, download from github and install these dependencies.
 
 ```
 pip install textual requests httpx textual_plotext
@@ -36,7 +36,7 @@ To simply run the UI in dev mode:
 textual run --dev sitrep.sitrep
 ```
 
-If you are doing development, use black, flake8 and mypy like this.
+If you are doing development, use black, flake8 and mypy like this:
 
 ```
 black sitrep && flake8 sitrep && black sitrep && mypy sitrep && textual run --dev sitrep.sitrep
