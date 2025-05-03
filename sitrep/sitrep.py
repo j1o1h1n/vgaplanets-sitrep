@@ -12,6 +12,7 @@ from textual.widgets import (
     Collapsible,
     RadioSet,
     RadioButton,
+    MarkdownViewer,
 )
 from textual_plotext import PlotextPlot
 
@@ -22,6 +23,7 @@ import getpass
 import logging
 
 from . import vgap
+from . import helpdoc
 from . import econrep
 from . import msglog
 from . import freighters
@@ -134,7 +136,7 @@ class ReportTableScreen(Screen):
         ("z", "copy_json_shim", "Copy Export JS Shim"),
     ]
 
-    def __init__(self, rows, *args, json_data="", race="", **kwargs):
+    def __init__(self, rows, *args, json_data="", race="", helpdoc="", **kwargs):
         super().__init__(*args, **kwargs)
         self.sub_title = race
         self.json_data = json_data
@@ -142,6 +144,8 @@ class ReportTableScreen(Screen):
         self.table.add_columns(*rows[0])
         self.table.add_rows(rows[1:])
         self.table_text = "\n".join(["\t".join([str(c) for c in row]) for row in rows])
+        if helpdoc:
+            self.app.update_help(helpdoc)
 
     def on_mount(self):
         self.refresh_bindings()
@@ -202,6 +206,24 @@ class ChoosePlayer(ModalScreen):
             self.dismiss(player_id)
 
 
+class HelpModal(ModalScreen):
+
+    BINDINGS = [
+        ("escape", "pop_screen", "Back"),
+    ]
+
+    def __init__(self, doc, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.doc = doc
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll():
+            yield MarkdownViewer(self.doc)
+
+    def action_pop_screen(self):
+        self.app.pop_screen()
+
+
 class ReportScreen(Screen):
 
     BINDINGS = [
@@ -253,8 +275,12 @@ class ReportScreen(Screen):
         yield Footer()
 
     def on_mount(self):
+        self.app.update_help(helpdoc.MAIN)
         plt = self.query_one(PlotextPlot).plt
         graph.update_plot(self.game, plt, self.graphs[self.graph_type_id])
+
+    def on_screen_resume(self):
+        self.app.update_help(helpdoc.MAIN)
 
     @on(Button.Pressed)
     def report_pressed(self, event: Button.Pressed) -> None:
@@ -285,7 +311,9 @@ class ReportScreen(Screen):
         rows = []
         rows.append(cols)
         rows.extend(data)
-        self.app.push_screen(ReportTableScreen(rows, race=player.race))
+        self.app.push_screen(
+            ReportTableScreen(rows, race=player.race, helpdoc=helpdoc.MILINT)
+        )
 
     def handle_freighter_report(self, player_id):
         player = self.game.players[player_id]
@@ -380,6 +408,7 @@ class SituationReport(App):
     BINDINGS = [
         ("g", "choose_game", "Games"),
         ("escape", "pop_screen", "Pop the current screen"),
+        ("?", "help", "Help"),
     ]
 
     def __init__(self, planets_db, *args, **kwargs):
@@ -387,9 +416,13 @@ class SituationReport(App):
         self.planets_db = planets_db
         self.settings = self.planets_db.settings()
         self.game = None
+        self.help_text = ""
         for k in ALL_SETTINGS:
             if k not in self.settings:
                 self.settings[k] = {}
+
+    def update_help(self, help_text):
+        self.help_text = help_text
 
     async def on_mount(self):
         if self.planets_db.requires_update():
@@ -409,10 +442,15 @@ class SituationReport(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield Static(helpdoc.SITREP, classes="display")
         yield Footer()
 
     def action_pop_screen(self):
-        self.pop_screen()
+        if len(self._screen_stack) > 1:
+            self.pop_screen()
+
+    def action_help(self):
+        self.push_screen(HelpModal(self.help_text))
 
     def action_choose_game(self):
         self.push_screen(ChooseGameScreen(self.games))
@@ -478,7 +516,7 @@ def main():
 
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.DEBUG,  # Set the logging level to DEBUG
+        level=logging.WARNING,  # Set the logging level to DEBUG
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     main()

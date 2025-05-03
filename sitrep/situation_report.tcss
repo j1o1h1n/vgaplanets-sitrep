@@ -164,7 +164,7 @@ EconReportTableScreen > Container {
 }
 
 EconReportTableScreen > Container > Horizontal > Rule {
-    color: $warning;
+    color: #cc99cc;
     text-align: right;
     padding: 0 1 0 2;
 }
@@ -206,11 +206,6 @@ Sidebar > RadioSet > RadioButton {
     background: $surface-lighten-1;
 }
 
-.buttons {
-    padding: 1 2 0 0;
-    align: right bottom;
-}
-
 .rightrow {
     height: auto;
     background: $primary-muted;
@@ -218,9 +213,28 @@ Sidebar > RadioSet > RadioButton {
     padding: 0 2 0 0;
 }
 
-.squash {
-    height: 3;
-    color: $text-accent;
-    background: #646dcc;
-    border: round #9c9cff;
+/* help */
+
+.display {
+    height: auto;
+    width: auto;
+    padding: 2 4 2 2;
+    align: center middle;
+    offset: 12 6;
+    color: $warning-lighten-2;
+    background: $secondary-darken-3;
 }
+
+HelpModal {
+    background: rgba(0,100,200,0.4);
+}
+
+HelpModal > VerticalScroll {
+    margin: 4 8;
+    border: panel #c198b0;
+}
+
+HelpModal > VerticalScroll > MarkdownViewer {
+    padding: 2 2;
+}
+

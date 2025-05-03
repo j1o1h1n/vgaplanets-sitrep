@@ -3,6 +3,6 @@
 *.db
 *.db-*
 *.ipynb
-+vgapui
++sr
 examples
 .DS_Store
