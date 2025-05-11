@@ -136,7 +136,7 @@ class ReportTableScreen(Screen):
         ("z", "copy_json_shim", "Copy Export JS Shim"),
     ]
 
-    def __init__(self, rows, *args, json_data="", race="", helpdoc="", **kwargs):
+    def __init__(self, rows, *args, json_data="", race="", help="", **kwargs):
         super().__init__(*args, **kwargs)
         self.sub_title = race
         self.json_data = json_data
@@ -144,11 +144,13 @@ class ReportTableScreen(Screen):
         self.table.add_columns(*rows[0])
         self.table.add_rows(rows[1:])
         self.table_text = "\n".join(["\t".join([str(c) for c in row]) for row in rows])
-        if helpdoc:
-            self.app.update_help(helpdoc)
+        self.help = help
 
     def on_mount(self):
         self.refresh_bindings()
+
+    def on_screen_resume(self):
+        self.app.update_help(self.help)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -275,7 +277,6 @@ class ReportScreen(Screen):
         yield Footer()
 
     def on_mount(self):
-        self.app.update_help(helpdoc.MAIN)
         plt = self.query_one(PlotextPlot).plt
         graph.update_plot(self.game, plt, self.graphs[self.graph_type_id])
 
@@ -312,14 +313,18 @@ class ReportScreen(Screen):
         rows.append(cols)
         rows.extend(data)
         self.app.push_screen(
-            ReportTableScreen(rows, race=player.race, helpdoc=helpdoc.MILINT)
+            ReportTableScreen(rows, race=player.race, help=helpdoc.MILINT)
         )
 
     def handle_freighter_report(self, player_id):
         player = self.game.players[player_id]
         rows = freighters.build_report(self.game, player_id)
         json = freighters.build_drawing_data(self.game, player_id)
-        self.app.push_screen(ReportTableScreen(rows, json_data=json, race=player.race))
+        self.app.push_screen(
+            ReportTableScreen(
+                rows, json_data=json, race=player.race, help=helpdoc.FREIGHTERS
+            )
+        )
 
     def replot(self) -> None:
         """Set up the plot."""
@@ -492,11 +497,11 @@ class SituationReport(App):
         "refresh game data, call from worker"
         await self.planets_db.update(force_update=True)
 
-        self.game = query_one(self.games, lambda g: g.game_id == game_id)
         turn_id = self.game.turn().turn_id
         await planets_db.update_turn(game_id, turn_id)
 
         self.games = list(self.planets_db.games())
+        self.game = query_one(self.games, lambda g: g.game_id == game_id)
         self.switch_screen(ReportScreen(self.game))
 
 

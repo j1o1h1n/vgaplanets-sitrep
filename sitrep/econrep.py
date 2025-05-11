@@ -15,6 +15,8 @@ from textual import on
 from rich.text import Text
 
 from . import vgap
+from . import helpdoc
+
 from .widgets import rule
 
 from collections import defaultdict
@@ -145,6 +147,9 @@ class EconReportTableScreen(Screen):
         self.game = game
         self.turn = self.game.turn()
         self.expanded = defaultdict(bool)
+
+    def on_screen_resume(self):
+        self.app.update_help(helpdoc.ECON)
 
     def action_prev_turn(self):
         self.update_turn(-1)

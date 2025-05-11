@@ -164,7 +164,7 @@ EconReportTableScreen > Container {
 }
 
 EconReportTableScreen > Container > Horizontal > Rule {
-    color: #cc99cc;
+    color: #72e2e4;
     text-align: right;
     padding: 0 1 0 2;
 }

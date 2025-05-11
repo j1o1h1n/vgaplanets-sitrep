@@ -7,6 +7,8 @@ from textual.screen import Screen
 
 from .widgets import rule
 
+from . import helpdoc
+
 import re
 
 
@@ -42,11 +44,11 @@ class Sidebar(Container):
 
 
 def all_message_types(game):
-    res = {999}
+    found = {999}
     for turn in game.turns.values():
         for m in turn.rst["messages"]:
-            res.add(m["messagetype"])
-    return res
+            found.add(m["messagetype"])
+    return [mt for mt in MESSAGE_TYPES if mt in found]
 
 
 class MessagesControl:
@@ -111,6 +113,9 @@ class MessagesScreen(Screen):
         self.input_value = ""
         self.message_type = 999
         self.message_types = all_message_types(self.game)
+
+    def on_screen_resume(self):
+        self.app.update_help(helpdoc.MSGLOG)
 
     def compose(self) -> ComposeResult:
         yield Header()
