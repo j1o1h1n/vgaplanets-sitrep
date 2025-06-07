@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title id="pageTitle">VGAP Starmap</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: sans-serif; }
+    canvas { border: 1px solid #ccc; background-color: black; }
+    table { margin-top: 1em; border-collapse: collapse; }
+    th, td { padding: 4px 8px; border: 1px solid #aaa; }
+    input[type="color"] { border: none; background: none; }
+    #tooltip {
+      position: absolute;
+      background: #fdfdfd;
+      border: 1px solid #666;
+      border-left: 6px solid transparent; /* will be set dynamically */
+      padding: 4px 8px;
+      font-size: 13px;
+      font-family: sans-serif;
+      color: #333;
+      white-space: nowrap;
+      pointer-events: none;
+      display: none;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+      z-index: 10;
+    }
+    #mapTitle {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.5em;
+      letter-spacing: 0.05em;
+      color: #ccc;
+      margin-top: 0.5em;
+    }
+  </style>
+
+
+</head>
+<body>
+
+<h2 id="mapTitle">VGAP Starmap</h2>
+
+<div id="tooltip"></div>
+
+<div>
+<canvas id="starmap" width="1200" height="900"></canvas>
+</div>
+
+<div>
+  <label for="turnSlider">Turn: <span id="turnLabel">1</span></label>
+  <input type="range" id="turnSlider" min="1" max="1" value="1">
+
+  <button id="rewindButton">⏮️</button>
+  <button id="stepBackButton">⬅️</button>
+  <button id="stepForwardButton">➡️</button>
+  <button id="playPauseButton">▶️</button>
+  <div>
+    <button id="zoomInButton">🔍+</button>
+    <button id="zoomOutButton">🔍−</button>
+    <button id="resetViewButton">🔄 Reset</button>
+  </div> 
+</div>
+
+<h3>Players</h3>
+<table id="playerTable">
+  <thead>
+    <tr><th>ID</th><th>Name</th><th>Race</th><th>Color</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+
+fetch('starmap.json')
+  .then(response => response.json())
+  .then(data => {
+    window.starmapData = data;
+    initializeMap();
+  });
+
+const canvas = document.getElementById('starmap');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+let screenPlanets = [];
+
+let currentTurnId = "1";
+let isPlaying = false;
+let playInterval = null;
+
+let planetOwner = {};
+let starbaseOwner = {};
+
+/* zoom and pan */
+const MIN_ZOOM = 0.2;
+const MAX_ZOOM = 5.0;
+
+let zoom = 1.0;
+let offsetX = 0;
+let offsetY = 0;
+let isDragging = false;
+let dragStart = { x: 0, y: 0 };
+
+function getColor(ownerid) {
+  const player = starmapData.players.find(p => p.id === ownerid);
+  return player ? player.color : "#888888";
+}
+
+function updateTurn(turnId) {
+  currentTurnId = turnId;
+  const turn = starmapData.turns[turnId];
+  planetOwner = turn.planet_owner || {};
+  starbaseOwner = turn.starbase_owner || {};
+  document.getElementById("turnLabel").textContent = turnId;
+  drawMap();
+}
+
+function drawCircle(x, y, radius, color) {
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, 2 * Math.PI);
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+function drawCross(x, y, size, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - size, y);
+  ctx.lineTo(x + size, y);
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x, y + size);
+  ctx.stroke();
+}
+
+function getProjectedPositions(x, y) {
+  if (starmapData.mapshape !== 1) return [ { x, y } ];
+
+  const magicOffset = 149;
+  const magicPadding = 20;
+
+  const w = starmapData.width + magicPadding;
+  const h = starmapData.height + magicPadding;
+
+  const trueX = x + magicOffset + magicPadding;
+  const trueY = y + magicOffset + magicPadding;
+
+  const offsets = [
+    [-w, -h], [0, -h], [w, -h],
+    [-w,  0], [0,  0], [w,  0],
+    [-w,  h], [0,  h], [w,  h],
+  ];
+
+  return offsets.map(([dx, dy]) => ({ x: trueX + dx, y: trueY + dy }));
+}
+
+function drawMap() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  screenPlanets = [];
+
+  const planetList = Object.values(starmapData.planets);
+  const xs = planetList.map(p => p.x);
+  const ys = planetList.map(p => p.y);
+
+  const pad = starmapData.padding || 50;
+
+  const minX = Math.min(...xs) - pad;
+  const maxX = Math.max(...xs) + pad;
+  const minY = Math.min(...ys) - pad;
+  const maxY = Math.max(...ys) + pad;
+
+  const scaleX = canvas.width / (maxX - minX);
+  const scaleY = canvas.height / (maxY - minY);
+
+  function tx(x) {
+    return (x - minX) * scaleX * zoom + offsetX;
+  }
+
+  function ty(y) {
+    return (canvas.height - (y - minY) * scaleY) * zoom + offsetY;
+  }
+
+  for (const planet of planetList) {
+    const x = planet.x;
+    const y = planet.y;
+    const ownerId = planetOwner[planet.id] || 0;
+    const color = getColor(ownerId);
+
+    const positions = getProjectedPositions(x, y);
+    for (const { x: px, y: py } of positions) {
+      const sx = tx(px);
+      const sy = ty(py);
+      drawCircle(sx, sy, 4, color);
+
+      if (starbaseOwner[planet.id]) {
+        drawCross(sx, sy, 6, getColor(starbaseOwner[planet.id]));
+      }
+
+      // Only store center tile for hover detection
+      if (px === x && py === y) {
+        screenPlanets.push({ id: planet.id, name: planet.name, x: sx, y: sy });
+      }
+    }
+  }
+
+  // Draw border around the original padded map bounds
+  const paddedLeft   = tx(minX);
+  const paddedTop    = ty(maxY);
+  const paddedRight  = tx(maxX);
+  const paddedBottom = ty(minY);
+
+  ctx.strokeStyle = "#444";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(
+    paddedLeft,
+    paddedTop,
+    paddedRight - paddedLeft,
+    paddedBottom - paddedTop
+  );
+}
+
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  let found = null;
+  for (const planet of screenPlanets) {
+    const dx = mx - planet.x;
+    const dy = my - planet.y;
+    if (dx * dx + dy * dy < 100) {
+      found = planet;
+      break;
+    }
+  }
+
+  if (found) {
+    const ownerId = planetOwner[found.id] || 0;
+    const player = starmapData.players.find(p => p.id === ownerId);
+    const ownerName = player ? player.name : "Unowned";
+    const ownerColor = player ? player.color : "#888";
+
+    tooltip.textContent = `${found.name} (${ownerName})`;
+    tooltip.style.left = `${e.pageX + 10}px`;
+    tooltip.style.top = `${e.pageY + 10}px`;
+    tooltip.style.display = 'block';
+    tooltip.style.borderLeftColor = ownerColor;
+  } else {
+    tooltip.style.display = 'none';
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  tooltip.style.display = 'none';
+});
+
+function initializeMap() {
+  document.getElementById("pageTitle").textContent = starmapData.title || "Starmap";
+  document.getElementById("mapTitle").textContent = starmapData.title || "Starmap";
+
+  const tableBody = document.querySelector('#playerTable tbody');
+  for (const player of starmapData.players) {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${player.id}</td>
+      <td>${player.name}</td>
+      <td>${player.race}</td>
+      <td><input type="color" value="${player.color}" data-player="${player.id}"></td>
+    `;
+    tableBody.appendChild(row);
+  }
+
+  tableBody.addEventListener('input', (e) => {
+    if (e.target.type === 'color') {
+      const playerId = parseInt(e.target.dataset.player, 10);
+      const player = starmapData.players.find(p => p.id === playerId);
+      if (player) {
+        player.color = e.target.value;
+        drawMap();
+      }
+    }
+  });
+
+  const slider = document.getElementById("turnSlider");
+  const maxTurn = Math.max(...Object.keys(starmapData.turns).map(Number));
+  slider.max = maxTurn;
+  slider.value = 1;
+
+  slider.addEventListener("input", () => {
+    updateTurn(slider.value);
+  });
+
+  document.getElementById("playPauseButton").addEventListener("click", togglePlayPause);
+  document.getElementById("rewindButton").addEventListener("click", rewind);
+  document.getElementById("stepBackButton").addEventListener("click", () => {
+    let current = parseInt(slider.value);
+    if (current > 1) {
+      slider.value = current - 1;
+      updateTurn(slider.value);
+    }
+  });
+
+  document.getElementById("stepForwardButton").addEventListener("click", () => {
+    let current = parseInt(slider.value);
+    if (current < maxTurn) {
+      slider.value = current + 1;
+      updateTurn(slider.value);
+    }
+  });
+
+  document.getElementById("zoomInButton").addEventListener("click", () => {
+    zoom *= 1.25;
+    drawMap();
+  });
+
+  document.getElementById("zoomOutButton").addEventListener("click", () => {
+    zoom /= 1.25;
+    drawMap();
+  });
+
+  document.getElementById("resetViewButton").addEventListener("click", () => {
+    zoom = 1.0;
+    offsetX = 0;
+    offsetY = 0;
+    drawMap();
+  });
+
+  updateTurn("1");
+}
+
+function togglePlayPause() {
+  const button = document.getElementById("playPauseButton");
+
+  if (isPlaying) {
+    clearInterval(playInterval);
+    playInterval = null;
+    button.textContent = "▶️";
+    isPlaying = false;
+  } else {
+    isPlaying = true;
+    button.textContent = "⏸️";
+    playInterval = setInterval(() => {
+      const slider = document.getElementById("turnSlider");
+      let current = parseInt(slider.value);
+      const max = parseInt(slider.max);
+      if (current < max) {
+        slider.value = current + 1;
+        updateTurn(slider.value);
+      } else {
+        togglePlayPause(); // Stop at last turn
+      }
+    }, 800); // 800 ms per turn
+  }
+}
+
+function rewind() {
+  const slider = document.getElementById("turnSlider");
+  slider.value = 1;
+  updateTurn("1");
+  if (isPlaying) togglePlayPause(); // Stop playback if active
+}
+
+canvas.addEventListener("mousedown", (e) => {
+  isDragging = true;
+  dragStart = { x: e.clientX, y: e.clientY };
+});
+
+canvas.addEventListener("mouseup", () => {
+  isDragging = false;
+});
+
+canvas.addEventListener("mouseleave", () => {
+  isDragging = false;
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  if (isDragging) {
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    dragStart = { x: e.clientX, y: e.clientY };
+    offsetX += dx;
+    offsetY += dy;
+    drawMap();
+  }
+});
+
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault(); // prevent page scroll
+
+  const scaleFactor = 1.1;
+  const mouseX = e.offsetX;
+  const mouseY = e.offsetY;
+  const direction = e.deltaY < 0 ? 1 : -1;
+
+  // Calculate zoom change
+  const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * (direction > 0 ? scaleFactor : 1 / scaleFactor)));
+
+  // Adjust offset so zoom centers around mouse
+  const zoomRatio = newZoom / zoom;
+  offsetX = mouseX - (mouseX - offsetX) * zoomRatio;
+  offsetY = mouseY - (mouseY - offsetY) * zoomRatio;
+
+  zoom = newZoom;
+  drawMap();
+}, { passive: false });
+
+</script>
+
+</body>
+</html>
