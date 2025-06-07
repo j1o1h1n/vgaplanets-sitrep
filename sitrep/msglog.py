@@ -45,8 +45,8 @@ class Sidebar(Container):
 
 def all_message_types(game):
     found = {999}
-    for turn in game.turns.values():
-        for m in turn.rst["messages"]:
+    for turn in game.turns().values():
+        for m in turn.data["messages"]:
             found.add(m["messagetype"])
     return [mt for mt in MESSAGE_TYPES if mt in found]
 
@@ -66,10 +66,10 @@ class MessagesControl:
             return pat.search(m["headline"]) or pat.search(m["body"])
 
         doc = {}
-        for turn_id in reversed(self.game.turns):
-            turn = self.game.turns[turn_id]
+        for turn_id in reversed(self.game.turns()):
+            turn = self.game.turns()[turn_id]
             doc[turn_id] = {}
-            for m in turn.rst["messages"]:
+            for m in turn.data["messages"]:
                 if not filter_message(m):
                     continue
                 headline = m["headline"]

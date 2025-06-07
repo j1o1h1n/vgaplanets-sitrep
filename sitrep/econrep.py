@@ -162,11 +162,11 @@ class EconReportTableScreen(Screen):
 
     def update_turn(self, delta: int):
         if delta == 0:
-            new_turn_id = max(self.game.turns)
+            new_turn_id = self.game.turn().turn_id
         else:
             turn_id = self.turn.turn_id
-            new_turn_id = min(max(1, turn_id + delta), max(self.game.turns))
-        if new_turn_id != self.turn.turn_id and new_turn_id in self.game.turns:
+            new_turn_id = min(max(1, turn_id + delta), max(self.game.turn().turn_id))
+        if new_turn_id != self.turn.turn_id and new_turn_id in self.game.turns().keys():
             self.turn = self.game.turn(new_turn_id)
             self.refresh(recompose=True)
 

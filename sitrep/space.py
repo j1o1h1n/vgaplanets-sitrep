@@ -340,7 +340,7 @@ class SphericalMapSettings:
     magic_padding = 20
 
     def __init__(self, turn):
-        settings = turn.rst["settings"]
+        settings = turn.data["settings"]
         mapshape = settings["mapshape"]
         mapwidth = settings["mapwidth"]
         mapheight = settings["mapheight"]

@@ -44,7 +44,7 @@ class PlanetColony(NamedTuple):
 
 def build_planet_resources(turn, planet_id) -> PlanetResources:
     "returns a PlanetResources instance from turn planet data"
-    planet_data = query_one(turn.rst["planets"], lambda x: x["id"] == planet_id)
+    planet_data = query_one(turn.data["planets"], lambda x: x["id"] == planet_id)
     args = {k: planet_data[k] for k in PlanetResources._fields}
     return PlanetResources(**args)
 
@@ -52,7 +52,7 @@ def build_planet_resources(turn, planet_id) -> PlanetResources:
 def build_planet_colony(turn, planet_id) -> PlanetColony:
     "returns a PlanetColony instance from turn planet data"
     player_race = get_player_race_name(turn)
-    planet_data = query_one(turn.rst["planets"], lambda x: x["id"] == planet_id)
+    planet_data = query_one(turn.data["planets"], lambda x: x["id"] == planet_id)
     args = {k: planet_data[k] for k in PlanetColony._fields if k != "colonistracename"}
     args["colonistracename"] = player_race
     return PlanetColony(**args)

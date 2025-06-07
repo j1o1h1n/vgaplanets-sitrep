@@ -256,7 +256,7 @@ def Line(x0, y0, x1, y1, color):
 
 
 def get_hulls(game: Game) -> dict[int, REC]:
-    return {h["id"]: h for h in game.turn().rst["hulls"]}
+    return {h["id"]: h for h in game.turn().data["hulls"]}
 
 
 def init(game: Game) -> dict[int, SHIP]:
@@ -274,11 +274,11 @@ def lookup(game: Game, turn: Turn, ship: SHIP, key: str) -> str | int:
     hulls = init(game)
     if key.startswith("player"):
         player_id = ship["ownerid"]
-        player = query_one(turn.rst["players"], lambda x: x["id"] == player_id)
+        player = query_one(turn.data["players"], lambda x: x["id"] == player_id)
         if key == "player":
             return f"P{player_id}-{player['username']}"
         if key == "player_race":
-            race = query_one(turn.rst["races"], lambda x: x["id"] == player["raceid"])
+            race = query_one(turn.data["races"], lambda x: x["id"] == player["raceid"])
             return race["adjective"]
     elif key.startswith("hull."):
         key = key.split(".")[-1]
@@ -290,9 +290,9 @@ def build_rows(game: Game, player_id: int) -> list[REC]:
     hulls = init(game)
     return [
         {k: lookup(game, turn, ship, k) for k in COLS}
-        for turn in game.turns.values()
+        for turn in game.turns().values()
         for ship in query(
-            turn.rst["ships"],
+            turn.data["ships"],
             lambda s: s["ownerid"] == player_id and s["hullid"] in hulls,
         )
     ]
@@ -331,7 +331,7 @@ def get_diplomacy_color(turn: Turn, player_id: int) -> RGB:
     """Get the colour set in the Planets Nu diplomacy tab"""
     return (
         "#"
-        + query_one(turn.rst["relations"], lambda rel: rel["playertoid"] == player_id)[
+        + query_one(turn.data["relations"], lambda rel: rel["playertoid"] == player_id)[
             "color"
         ]
     )

@@ -289,7 +289,7 @@ class ReportScreen(Screen):
         match event.button.id:
             case "military":
                 self.app.push_screen(
-                    ChoosePlayer(max(self.game.turns.keys()), self.game.players),
+                    ChoosePlayer(max(self.game.turns().keys()), self.game.players),
                     self.handle_mil_report,
                 )
             case "economic":
@@ -299,7 +299,7 @@ class ReportScreen(Screen):
                 )
             case "freighter":
                 self.app.push_screen(
-                    ChoosePlayer(max(self.game.turns.keys()), self.game.players),
+                    ChoosePlayer(self.game.turn().turn_id, self.game.players),
                     self.handle_freighter_report,
                 )
             case "msgs":
@@ -367,7 +367,7 @@ class ChooseGameScreen(Screen):
         self.games = games
 
     def build_turn_info(self, game):
-        races = {r["id"]: r["adjective"] for r in game.turn().rst["races"]}
+        races = {r["id"]: r["adjective"] for r in game.turn().data["races"]}
         players = [p for p in game.info["players"] if p["accountid"]]
         data = [
             (p["username"], races[p["raceid"]], TURNSTATUS[p["turnstatus"]][1])

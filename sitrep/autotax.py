@@ -45,7 +45,7 @@ AUTO_TAX_OPTS = {
 
 def get_planet_autotax(turn, planet_id):
     "Get the autotax settings for the planet"
-    notes = turn.rst["notes"]
+    notes = turn.data["notes"]
     note = query_one(
         notes, lambda n: n["targettype"] == 100 and n["targetid"] == planet_id
     )

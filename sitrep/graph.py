@@ -23,7 +23,7 @@ GRAPHS = {
     "Tritanium Reserves": "groundtritanium",
     "Population ({race})": "clans",
     "Population (natives)": "nativeclans",
-    "Income": None,
+    "Income": "",
 }
 
 
@@ -38,13 +38,13 @@ def h2r(hex_color: str) -> tuple:
 def get_graph_data(game: vgap.Game, name: str) -> tuple[str, list[int]]:
     if name == "Income":
         vals = []
-        for turn in game.turns.values():
+        for turn in game.turns().values():
             planets = [p for p in turn.planets(turn.player_id)]
             colonies = [econ.build_planet_colony(turn, p["id"]) for p in planets]
             vals.append(sum(econ.calc_income(c) for c in colonies))
     else:
         rsrc = GRAPHS[name]
-        vals = [t.stockpile(rsrc) for t in game.turns.values()]
+        vals = [t.stockpile(rsrc) for t in game.turns().values()]
     title = name
     if "{race}" in title:
         race = vgap.get_player_race_name(game.turn())
@@ -95,7 +95,7 @@ def human_readable_ticks(ymin, ymax, n_ticks=5, abbreviate=True):
 def update_plot(game, plt, graph_name):
     plt.clear_data()
     title, y_values = get_graph_data(game, graph_name)
-    x_values = list(game.turns.keys())
+    x_values = list(game.turns().keys())
     yticks, ylabels = human_readable_ticks(min(y_values), max(y_values))
     xticks, xlabels = human_readable_ticks(min(x_values), max(x_values))
     plt.plot(
