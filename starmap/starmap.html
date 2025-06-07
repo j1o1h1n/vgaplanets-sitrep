@@ -5,48 +5,130 @@
   <title id="pageTitle">VGAP Starmap</title>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
   <style>
-    body { font-family: sans-serif; }
+    body {
+      margin: 10;
+      font-family: sans-serif;
+      background-color: #1A1B26; /* background */
+      color: #7AA2F7;            /* secondary */
+    }
+
     canvas { border: 1px solid #ccc; background-color: black; }
-    table { margin-top: 1em; border-collapse: collapse; }
-    th, td { padding: 4px 8px; border: 1px solid #aaa; }
-    input[type="color"] { border: none; background: none; }
+
+    input[type="color"] {
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+
+    input[type="range"] {
+      margin: 3px;
+      accent-color: #7AA2F7;
+    }
+
+    button {
+      background-color: #7AA2F7;  /* secondary */
+      color: #24283B;             /* button-color-foreground */
+      border: none;
+      padding: 6px 10px;
+      margin: 4px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #8AB2FF; /* primary on hover */
+    }
+
     #tooltip {
       position: absolute;
-      background: #fdfdfd;
-      border: 1px solid #666;
-      border-left: 6px solid transparent; /* will be set dynamically */
+      background: #24283B;       /* surface */
+      border: 1px solid #7AA2F7; /* secondary */
+      color: #BB9AF7;            /* primary */
       padding: 4px 8px;
-      font-size: 13px;
+      font-size: 12px;
       font-family: sans-serif;
-      color: #333;
       white-space: nowrap;
       pointer-events: none;
       display: none;
-      box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+      border-left: 6px solid transparent;
       z-index: 10;
-    }
+    }    
+
     #mapTitle {
       font-family: 'Orbitron', sans-serif;
       font-size: 1.5em;
       letter-spacing: 0.05em;
-      color: #ccc;
+      color: #BB9AF7; /* primary */
       margin-top: 0.5em;
     }
+
+    #mainLayout {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      padding: 20px;
+      background-color: #1A1B26; /* background */
+    }
+
+    #starmap {
+      border: 1px solid #414868; /* panel border */
+      background-color: black;
+    }
+
+    #sidebar {
+      font-family: sans-serif;
+      background-color: #414868;  /* panel */
+      padding: 16px;
+      border-radius: 8px;
+      min-width: 250px;
+    }
+
+    #playerTable {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: #24283B; /* surface */
+      color: #7AA2F7;            /* secondary */
+    }
+
+    #playerTable th {
+      background-color: #414868; /* panel */
+      color: #BB9AF7;            /* primary */
+      padding: 6px;
+      text-align: left;
+      border-bottom: 1px solid #1A1B26;
+    }
+
+    #playerTable td {
+      padding: 6px;
+      border-top: 1px solid #1A1B26;
+      font-size: 14px;
+    }
+
+    #controls {
+      padding: 0px 20px;
+    }
+
   </style>
-
-
 </head>
 <body>
 
-<h2 id="mapTitle">VGAP Starmap</h2>
-
 <div id="tooltip"></div>
 
-<div>
-<canvas id="starmap" width="1200" height="900"></canvas>
+<div id="mainLayout">
+  <canvas id="starmap" width="800" height="800"></canvas>
+
+  <div id="sidebar">
+    <h3 id="mapTitle">Starmap</h3>
+    <table id="playerTable">
+      <thead>
+        <tr><th>Name</th><th>Race</th><th>Color</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 </div>
 
-<div>
+<div id="controls">
   <label for="turnSlider">Turn: <span id="turnLabel">1</span></label>
   <input type="range" id="turnSlider" min="1" max="1" value="1">
 
@@ -60,14 +142,6 @@
     <button id="resetViewButton">🔄 Reset</button>
   </div> 
 </div>
-
-<h3>Players</h3>
-<table id="playerTable">
-  <thead>
-    <tr><th>ID</th><th>Name</th><th>Race</th><th>Color</th></tr>
-  </thead>
-  <tbody></tbody>
-</table>
 
 <script>
 
@@ -114,6 +188,11 @@ function updateTurn(turnId) {
   drawMap();
 }
 
+function scaleRadius(base, zoom, min = 2) {
+  max = base * 3;
+  return Math.max(min, Math.min(max, base * zoom));
+}
+
 function drawCircle(x, y, radius, color) {
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, 2 * Math.PI);
@@ -123,7 +202,7 @@ function drawCircle(x, y, radius, color) {
 
 function drawCross(x, y, size, color) {
   ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = Math.max(0.5, Math.min(size / 2, 6));
   ctx.beginPath();
   ctx.moveTo(x - size, y);
   ctx.lineTo(x + size, y);
@@ -150,7 +229,12 @@ function getProjectedPositions(x, y) {
     [-w,  h], [0,  h], [w,  h],
   ];
 
-  return offsets.map(([dx, dy]) => ({ x: trueX + dx, y: trueY + dy }));
+
+  return offsets.map(([dx, dy]) => ({
+    x: trueX + dx,
+    y: trueY + dy,
+    primary: dx === 0 && dy === 0
+  }));
 }
 
 function drawMap() {
@@ -186,17 +270,17 @@ function drawMap() {
     const color = getColor(ownerId);
 
     const positions = getProjectedPositions(x, y);
-    for (const { x: px, y: py } of positions) {
-      const sx = tx(px);
-      const sy = ty(py);
-      drawCircle(sx, sy, 4, color);
+    for (const position of positions) {
+      const sx = tx(position.x);
+      const sy = ty(position.y);
+      drawCircle(sx, sy, scaleRadius(2, zoom), color);
 
       if (starbaseOwner[planet.id]) {
-        drawCross(sx, sy, 6, getColor(starbaseOwner[planet.id]));
+        drawCross(sx, sy, scaleRadius(4, zoom), color);
       }
 
       // Only store center tile for hover detection
-      if (px === x && py === y) {
+      if (position.primary) {
         screenPlanets.push({ id: planet.id, name: planet.name, x: sx, y: sy });
       }
     }
@@ -225,10 +309,12 @@ canvas.addEventListener('mousemove', (e) => {
   const my = e.clientY - rect.top;
 
   let found = null;
+  const hoverRadius = Math.max(6, 10 * zoom); // adaptive radius
+
   for (const planet of screenPlanets) {
     const dx = mx - planet.x;
     const dy = my - planet.y;
-    if (dx * dx + dy * dy < 100) {
+    if (dx * dx + dy * dy < hoverRadius * hoverRadius) {
       found = planet;
       break;
     }
@@ -262,7 +348,6 @@ function initializeMap() {
   for (const player of starmapData.players) {
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td>${player.id}</td>
       <td>${player.name}</td>
       <td>${player.race}</td>
       <td><input type="color" value="${player.color}" data-player="${player.id}"></td>
