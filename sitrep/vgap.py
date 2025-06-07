@@ -19,16 +19,17 @@ from . import space
 
 logger = logging.getLogger(__name__)
 
-GAME_ID = int
-PLAYER_ID = int
-TURN_ID = int
-SHIP_ID = int
-PLANET_ID = int
-STARBASE_ID = int
-PLANET = dict[str, Any]
-SHIP = dict[str, Any]
-STARBASE = dict[str, Any]
-PLANET_SHIP_MAP = dict[PLANET_ID, list[SHIP]]
+type GAME_ID = int
+type PLAYER_ID = int
+type TURN_ID = int
+type SHIP_ID = int
+type PLANET_ID = int
+type STARBASE_ID = int
+type PLANET = dict[str, Any]
+type SHIP = dict[str, Any]
+type STARBASE = dict[str, Any]
+type PLANET_SHIP_MAP = dict[PLANET_ID, list[SHIP]]
+type RGB = str
 type SCORES = dict[PLAYER_ID, dict[TURN_ID, "Score"]]
 type TURNS = dict[PLAYER_ID, dict[TURN_ID, "Turn"]]
 
@@ -94,6 +95,11 @@ def get_player_race_name(turn: "Turn") -> str:
     race = query_one(turn.data["races"], lambda x: x["id"] == race_id)
     return race["adjective"]
 
+
+def get_diplomacy_color(turn: "Turn", player_id: PLAYER_ID) -> RGB:
+    """Get the colour set in the Planets Nu diplomacy tab"""
+    val = query_one(turn.data["relations"], lambda rel: rel["playertoid"] == player_id)["color"]
+    return "#" + val if val else "#68e891"
 
 class Score(NamedTuple):
     turn_id: int
@@ -191,6 +197,9 @@ class Player(NamedTuple):
     race_id: int
     name: str
     race: str
+    color: RGB
+    short_name: str
+    adjective: str
 
 
 class Turn:
@@ -265,15 +274,20 @@ class Game:
         self.data = data
         self.info = info
         self._turns = turns
-        races = next(iter(next(iter(turns.values())).values())).data["races"]
+
+        # get information from the model turn 12 (arbitrary choice!)
+        player_turns = self._turns[self.meta['player_id']]
+        model_turn = player_turns[min(12, max(player_turns.keys()))]
+
+        races = model_turn.data["races"]
         self.races = {r["id"]: r for r in races}
-        players = self.info["players"]
-        self.players = {
-            p["id"]: Player(
-                p["id"], p["raceid"], p["username"], self.races[p["raceid"]]["name"]
-            )
-            for p in players
-        }
+        players = model_turn.data["players"]
+        self.players = {}
+        for p in players:
+            race = self.races[p["raceid"]]
+            color = get_diplomacy_color(model_turn, p["id"])
+            player = Player(p["id"], p["raceid"], p["username"], race["name"], color, race['shortname'], race['adjective'])
+            self.players[p["id"]] = player
         if 0 in self.races:
             del self.races[0]
         if 0 in self.players:
@@ -304,9 +318,10 @@ class Game:
         if self.info["game"]["status"] == 3:
             # Finished
             for player_id in self.players:
-                for turn_id in self._turns[player_id]:
-                    turn = self._turns.get(player_id, {}).get(turn_id, None)
-                    data = turn.data["scores"][player_id] if turn else {"turn": turn_id}
+                turns = self.turns(player_id)
+                for turn_id in turns:
+                    turn = turns[turn_id]
+                    data = query_one(turn.data["scores"], lambda sd: sd["ownerid"] == player_id)
                     res[player_id][turn_id] = create_score(data)
         else:
             res = {p: {} for p in self.players}
