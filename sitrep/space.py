@@ -333,10 +333,51 @@ def shortest_paths(cliques: Clique, neighbours: Neighbours) -> ShortestPaths:
     return paths
 
 
+# class SphericalMapSettings:
+
+#     # FIXME verify this
+#     magic_offset = 149
+#     magic_padding = 20
+
+#     def __init__(self, turn):
+#         settings = turn.data["settings"]
+#         mapshape = settings["mapshape"]
+#         mapwidth = settings["mapwidth"]
+#         mapheight = settings["mapheight"]
+#         if mapshape != 1:
+#             raise Exception("map is not spherical")
+#         true_width = mapwidth + self.magic_padding
+#         true_height = mapheight + self.magic_padding
+#         self.bottom_left = Point(
+#             true_width + self.magic_offset, true_height + self.magic_offset
+#         )
+#         self.top_right = Point(
+#             self.bottom_left[0] + true_width, self.bottom_left[1] + true_height
+#         )
+#         self.map_width = self.top_right[0] - self.bottom_left[0]
+#         self.map_height = self.top_right[1] - self.bottom_left[1]
+
+#     def project_coords(self, p: dict):
+#         "returns the original coordinate and the projection into the four mirrors"
+#         x, y = p["x"], p["y"]
+#         offsets = [
+#             (0, 0),
+#             (self.map_width, 0),
+#             (-self.map_width, 0),
+#             (0, self.map_height),
+#             (0, -self.map_height),
+#         ]
+#         for dx, dy in offsets:
+#             yield {"x": x + dx, "y": y + dy}
+
+#     def __repr__(self):
+#         return f"<SphericalMapSettings bl: {self.bottom_left}, tr: {self.top_right}>"
+
+
+# TBC
+
 class SphericalMapSettings:
 
-    # FIXME verify this
-    magic_offset = 149
     magic_padding = 20
 
     def __init__(self, turn):
@@ -348,9 +389,7 @@ class SphericalMapSettings:
             raise Exception("map is not spherical")
         true_width = mapwidth + self.magic_padding
         true_height = mapheight + self.magic_padding
-        self.bottom_left = Point(
-            true_width + self.magic_offset, true_height + self.magic_offset
-        )
+        self.bottom_left = Point(true_width, true_height)
         self.top_right = Point(
             self.bottom_left[0] + true_width, self.bottom_left[1] + true_height
         )
@@ -358,20 +397,27 @@ class SphericalMapSettings:
         self.map_height = self.top_right[1] - self.bottom_left[1]
 
     def project_coords(self, p: dict):
-        "returns the original coordinate and the projection into the four mirrors"
+        "returns the original coordinate and the projection into the grid around the center"
         x, y = p["x"], p["y"]
+        w = self.map_width
+        h = self.map_height
         offsets = [
-            (0, 0),
-            (self.map_width, 0),
-            (-self.map_width, 0),
-            (0, self.map_height),
-            (0, -self.map_height),
+            [-w, -h], [0, -h], [w, -h],
+            [-w,  0], [0,  0], [w,  0],
+            [-w,  h], [0,  h], [w,  h],
         ]
         for dx, dy in offsets:
             yield {"x": x + dx, "y": y + dy}
 
+    def bounding_box(self):
+        x0, y0 = self.bottom_left
+        x1, y1 = self.top_right
+        bl = Point(x0 + self.magic_padding, y0 + self.magic_padding)
+        tr = Point(x1 + self.magic_padding, y1 + self.magic_padding)
+        return (bl, tr)
+                   
     def __repr__(self):
-        return f"<SphericalMapSettings bl: {self.bottom_left}, tr: {self.top_right}>"
+        return f"<SphericalMapSettings bl: {self.bottom_left}, tr: {self.top_right}, w: {self.map_width}, h: {self.map_height}>"
 
 
 class Cluster:

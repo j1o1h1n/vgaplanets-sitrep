@@ -212,7 +212,7 @@ function drawCircle(x, y, radius, color) {
 
 function drawCross(x, y, size, color) {
   ctx.strokeStyle = color;
-  ctx.lineWidth = Math.max(0.5, Math.min(size / 2, 6));
+  ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(x - size, y);
   ctx.lineTo(x + size, y);
@@ -224,21 +224,19 @@ function drawCross(x, y, size, color) {
 function getProjectedPositions(x, y) {
   if (starmapData.mapshape !== 1) return [ { x, y } ];
 
-  const magicOffset = 149;
   const magicPadding = 20;
 
   const w = starmapData.width + magicPadding;
   const h = starmapData.height + magicPadding;
 
-  const trueX = x + magicOffset + magicPadding;
-  const trueY = y + magicOffset + magicPadding;
+  const trueX = x + magicPadding;
+  const trueY = y + magicPadding;
 
   const offsets = [
     [-w, -h], [0, -h], [w, -h],
     [-w,  0], [0,  0], [w,  0],
     [-w,  h], [0,  h], [w,  h],
   ];
-
 
   return offsets.map(([dx, dy]) => ({
     x: trueX + dx,
@@ -272,6 +270,13 @@ function drawMap() {
   function ty(y) {
     return (canvas.height - (y - minY) * scaleY) * zoom + offsetY;
   }
+  // function tx(x) {
+  //   return (x - minX) * scale + centerOffsetX + offsetX;
+  // }
+
+  // function ty(y) {
+  //   return (maxY - y) * scale + centerOffsetY + offsetY;
+  // }
 
   for (const planet of planetList) {
     const x = planet.x;
@@ -281,34 +286,40 @@ function drawMap() {
 
     const positions = getProjectedPositions(x, y);
     for (const position of positions) {
-      const sx = tx(position.x);
-      const sy = ty(position.y);
-      drawCircle(sx, sy, scaleRadius(2, zoom), color);
+      const sx = Math.trunc(tx(position.x));
+      const sy = Math.trunc(ty(position.y));
+      drawCircle(sx, sy, scaleRadius(1, zoom), color);
 
       if (starbaseOwner[planet.id]) {
-        drawCross(sx, sy, scaleRadius(4, zoom), color);
+        drawCross(sx, sy, scaleRadius(8, zoom), color);
       }
 
       // Only store center tile for hover detection
-      if (position.primary) {
-        screenPlanets.push({ id: planet.id, name: planet.name, x: sx, y: sy });
-      }
+      //if (position.primary) {
+        screenPlanets.push({ id: planet.id, name: planet.name, x: sx, y: sy, trueX: planet.x, trueY: planet.y });
+      //}
     }
   }
 
   // Draw border around the original padded map bounds
-  const paddedLeft   = tx(minX);
-  const paddedTop    = ty(maxY);
-  const paddedRight  = tx(maxX);
-  const paddedBottom = ty(minY);
+  const bounds = {
+    left: 1340,
+    right: 2660,
+    top: 2660,
+    bottom: 1340
+  };
+  const borderLeft = tx(bounds.left);
+  const borderTop = ty(bounds.top);
+  const borderRight = tx(bounds.right);
+  const borderBottom = ty(bounds.bottom);
 
   ctx.strokeStyle = "#444";
   ctx.lineWidth = 1;
   ctx.strokeRect(
-    paddedLeft,
-    paddedTop,
-    paddedRight - paddedLeft,
-    paddedBottom - paddedTop
+    borderLeft,
+    borderTop,
+    borderRight - borderLeft,
+    borderBottom - borderTop
   );
 }
 
@@ -319,14 +330,17 @@ canvas.addEventListener('mousemove', (e) => {
   const my = e.clientY - rect.top;
 
   let found = null;
-  const hoverRadius = Math.max(6, 10 * zoom); // adaptive radius
+  let minDistSq = Infinity;
+  const hoverRadius = Math.max(6, 10 * zoom);
 
   for (const planet of screenPlanets) {
     const dx = mx - planet.x;
     const dy = my - planet.y;
-    if (dx * dx + dy * dy < hoverRadius * hoverRadius) {
+    const distSq = dx * dx + dy * dy;
+
+    if (distSq < hoverRadius * hoverRadius && distSq < minDistSq) {
       found = planet;
-      break;
+      minDistSq = distSq;
     }
   }
 
@@ -336,7 +350,7 @@ canvas.addEventListener('mousemove', (e) => {
     const ownerName = player ? player.name : "Unowned";
     const ownerColor = player ? player.color : "#888";
 
-    tooltip.textContent = `${found.name} (${ownerName})`;
+    tooltip.textContent = `P${found.id} ${found.name} (${ownerName}) [${found.trueX},${found.trueY}]`;
     tooltip.style.left = `${e.pageX + 10}px`;
     tooltip.style.top = `${e.pageY + 10}px`;
     tooltip.style.display = 'block';
