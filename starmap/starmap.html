@@ -70,7 +70,18 @@
       background-color: #1A1B26; /* background */
     }
 
+    #canvasWrapper {
+      max-width: 900px;
+      width: 85vw;
+      height: 85vh; /* fit most of the viewport */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #1A1B26; /* match theme background */
+    }
+
     #starmap {
+      display: block;
       border: 1px solid #414868; /* panel border */
       background-color: black;
     }
@@ -115,14 +126,13 @@
 <div id="tooltip"></div>
 
 <div id="mainLayout">
-  <canvas id="starmap" width="800" height="800"></canvas>
+  <div id="canvasWrapper">
+    <canvas id="starmap"></canvas>
+  </div>
 
   <div id="sidebar">
     <h3 id="mapTitle">Starmap</h3>
     <table id="playerTable">
-      <thead>
-        <tr><th>Name</th><th>Race</th><th>Color</th></tr>
-      </thead>
       <tbody></tbody>
     </table>
   </div>
@@ -340,6 +350,33 @@ canvas.addEventListener('mouseleave', () => {
   tooltip.style.display = 'none';
 });
 
+function resizeCanvasToMapAspect() {
+  const wrapper = document.getElementById("canvasWrapper");
+  const canvas = document.getElementById("starmap");
+
+  const mapWidth = starmapData.width;
+  const mapHeight = starmapData.height;
+  const aspectRatio = mapWidth / mapHeight;
+
+  // Available space
+  const maxWidth = Math.min(wrapper.clientWidth, 900); // keep canvas modest
+  const maxHeight = wrapper.clientHeight;
+
+  // Fit while preserving aspect ratio
+  if (maxWidth / maxHeight > aspectRatio) {
+    canvas.height = maxHeight;
+    canvas.width = Math.floor(maxHeight * aspectRatio);
+  } else {
+    canvas.width = maxWidth;
+    canvas.height = Math.floor(maxWidth / aspectRatio);
+  }
+}
+
+window.addEventListener("resize", () => {
+  resizeCanvasToMapAspect();
+  drawMap();
+});
+
 function initializeMap() {
   document.getElementById("pageTitle").textContent = starmapData.title || "Starmap";
   document.getElementById("mapTitle").textContent = starmapData.title || "Starmap";
@@ -410,6 +447,7 @@ function initializeMap() {
     drawMap();
   });
 
+  resizeCanvasToMapAspect();
   updateTurn("1");
 }
 
