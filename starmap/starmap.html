@@ -119,6 +119,18 @@
       padding: 0px 20px;
     }
 
+    #zoom-indicator {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      color: #a9b1d6; /* foreground from tokyo-night */
+      background: rgba(36, 40, 59, 0.8); /* surface with transparency */
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: monospace;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -129,6 +141,7 @@
   <div id="canvasWrapper">
     <canvas id="starmap"></canvas>
   </div>
+  <div id="zoom-indicator"></div>
 
   <div id="sidebar">
     <h3 id="mapTitle">Starmap</h3>
@@ -179,6 +192,17 @@ const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 5.0;
 
 let zoom = 1.0;
+let mapWidth = 0;
+let mapHeight = 0;
+let bounds = {
+    left: 0,
+    right: 0,
+    bottom: 0,
+    top: 0
+};
+let baseScale = 1.0;
+let centerOffsetX = 0;
+let centerOffsetY = 0;
 let offsetX = 0;
 let offsetY = 0;
 let isDragging = false;
@@ -221,26 +245,25 @@ function drawCross(x, y, size, color) {
   ctx.stroke();
 }
 
+function updateZoomIndicator() {
+  const zoomDisplay = (zoom * 100).toFixed(0) + "%";
+  document.getElementById("zoom-indicator").textContent = `Zoom: ${zoomDisplay}`;
+}
+
 function getProjectedPositions(x, y) {
-  if (starmapData.mapshape !== 1) return [ { x, y } ];
+  if (starmapData.mapshape !== 1) return [{ x, y, primary: true }];
 
-  const magicPadding = 20;
-
-  const w = starmapData.width + magicPadding;
-  const h = starmapData.height + magicPadding;
-
-  const trueX = x + magicPadding;
-  const trueY = y + magicPadding;
-
+  const w = starmapData.width + 20;
+  const h = starmapData.height + 20;
   const offsets = [
     [-w, -h], [0, -h], [w, -h],
-    [-w,  0], [0,  0], [w,  0],
-    [-w,  h], [0,  h], [w,  h],
+    [-w, 0],  [0, 0],  [w, 0],
+    [-w, h],  [0, h],  [w, h]
   ];
 
   return offsets.map(([dx, dy]) => ({
-    x: trueX + dx,
-    y: trueY + dy,
+    x: x + dx,
+    y: y + dy,
     primary: dx === 0 && dy === 0
   }));
 }
@@ -249,35 +272,36 @@ function drawMap() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   screenPlanets = [];
 
-  const planetList = Object.values(starmapData.planets);
-  const xs = planetList.map(p => p.x);
-  const ys = planetList.map(p => p.y);
+  const mapwidth = starmapData.width;
+  const magicPadding = 20;
+  const trueWidth = mapwidth + magicPadding;
+  const trueHeight = starmapData.height + magicPadding;
 
-  const pad = starmapData.padding || 50;
+  bounds = {
+    left: trueWidth,
+    right: trueWidth * 2,
+    bottom: trueHeight,
+    top: trueHeight * 2
+  };
 
-  const minX = Math.min(...xs) - pad;
-  const maxX = Math.max(...xs) + pad;
-  const minY = Math.min(...ys) - pad;
-  const maxY = Math.max(...ys) + pad;
+  mapWidth = bounds.right - bounds.left;
+  mapHeight = bounds.top - bounds.bottom;
 
-  const scaleX = canvas.width / (maxX - minX);
-  const scaleY = canvas.height / (maxY - minY);
+  baseScale = Math.min(canvas.width / mapWidth, canvas.height / mapHeight);
+  const scaled = baseScale * zoom;
+
+  centerOffsetX = (canvas.width - mapWidth * scaled) / 2;
+  centerOffsetY = (canvas.height - mapHeight * scaled) / 2;
 
   function tx(x) {
-    return (x - minX) * scaleX * zoom + offsetX;
+    return (x - bounds.left) * scaled + centerOffsetX + offsetX;
   }
 
   function ty(y) {
-    return (canvas.height - (y - minY) * scaleY) * zoom + offsetY;
+    return (bounds.top - y) * scaled + centerOffsetY + offsetY;
   }
-  // function tx(x) {
-  //   return (x - minX) * scale + centerOffsetX + offsetX;
-  // }
 
-  // function ty(y) {
-  //   return (maxY - y) * scale + centerOffsetY + offsetY;
-  // }
-
+  const planetList = Object.values(starmapData.planets);
   for (const planet of planetList) {
     const x = planet.x;
     const y = planet.y;
@@ -291,36 +315,32 @@ function drawMap() {
       drawCircle(sx, sy, scaleRadius(1, zoom), color);
 
       if (starbaseOwner[planet.id]) {
-        drawCross(sx, sy, scaleRadius(8, zoom), color);
+        drawCross(sx, sy, scaleRadius(5, zoom), color);
       }
 
       // Only store center tile for hover detection
       //if (position.primary) {
-        screenPlanets.push({ id: planet.id, name: planet.name, x: sx, y: sy, trueX: planet.x, trueY: planet.y });
+        screenPlanets.push({ id: planet.id, name: planet.name, x: sx, y: sy, trueX: position.x, trueY: position.y });
       //}
     }
   }
 
-  // Draw border around the original padded map bounds
-  const bounds = {
-    left: 1340,
-    right: 2660,
-    top: 2660,
-    bottom: 1340
-  };
-  const borderLeft = tx(bounds.left);
-  const borderTop = ty(bounds.top);
-  const borderRight = tx(bounds.right);
-  const borderBottom = ty(bounds.bottom);
+  const borderLeft   = tx(bounds.left + magicPadding);
+  const borderBottom = ty(bounds.bottom + magicPadding);
+  const borderRight  = tx(bounds.right + magicPadding);
+  const borderTop    = ty(bounds.top + magicPadding);
 
   ctx.strokeStyle = "#444";
   ctx.lineWidth = 1;
+
   ctx.strokeRect(
     borderLeft,
     borderTop,
     borderRight - borderLeft,
     borderBottom - borderTop
   );
+  
+  updateZoomIndicator()
 }
 
 
@@ -522,24 +542,33 @@ canvas.addEventListener("mousemove", (e) => {
 });
 
 canvas.addEventListener("wheel", (e) => {
-  e.preventDefault(); // prevent page scroll
+  event.preventDefault(); // prevent page scroll
 
-  const scaleFactor = 1.1;
-  const mouseX = e.offsetX;
-  const mouseY = e.offsetY;
-  const direction = e.deltaY < 0 ? 1 : -1;
+  const rect = canvas.getBoundingClientRect();
+  const mx = event.clientX - rect.left;
+  const my = event.clientY - rect.top;
 
-  // Calculate zoom change
-  const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * (direction > 0 ? scaleFactor : 1 / scaleFactor)));
+  // World coords before zoom
+  const mapX = (mx - centerOffsetX - offsetX) / (baseScale * zoom) + bounds.left;
+  const mapY = bounds.top - (my - centerOffsetY - offsetY) / (baseScale * zoom);
 
-  // Adjust offset so zoom centers around mouse
-  const zoomRatio = newZoom / zoom;
-  offsetX = mouseX - (mouseX - offsetX) * zoomRatio;
-  offsetY = mouseY - (mouseY - offsetY) * zoomRatio;
+  const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
+  zoom *= zoomFactor;
 
-  zoom = newZoom;
+  // Recompute scale & center offsets
+  const newScaled = baseScale * zoom;
+  const newCenterOffsetX = (canvas.width - mapWidth * newScaled) / 2;
+  const newCenterOffsetY = (canvas.height - mapHeight * newScaled) / 2;
+
+  // Adjust pan so zoom focuses on mouse
+  offsetX = mx - (mapX - bounds.left) * newScaled - newCenterOffsetX;
+  offsetY = my - (bounds.top - mapY) * newScaled - newCenterOffsetY;
+
+  centerOffsetX = newCenterOffsetX;
+  centerOffsetY = newCenterOffsetY;
+
   drawMap();
-}, { passive: false });
+}, { passive: false }); // notify browser that native scrolling will be disabled
 
 </script>
 
