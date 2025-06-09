@@ -168,16 +168,24 @@
 
 <script>
 
-fetch('starmap.json')
-  .then(response => response.json())
-  .then(data => {
-    window.starmapData = data;
+Promise.all([
+  fetch('starmap.json').then(res => res.json()),
+  fetch('shiplist.json').then(res => res.json())
+])
+  .then(([starmapData, shiplistData]) => {
+    window.starmapData = starmapData;
+    window.shiplistData = shiplistData.shiplist;
     initializeMap();
+  })
+  .catch(err => {
+    console.error("Failed to load data:", err);
   });
 
 const canvas = document.getElementById('starmap');
 const ctx = canvas.getContext('2d');
 const tooltip = document.getElementById('tooltip');
+let starmapTree = null;
+let shiplistTree = {};
 let screenPlanets = [];
 
 let currentTurnId = "1";
@@ -208,6 +216,70 @@ let offsetY = 0;
 let isDragging = false;
 let dragStart = { x: 0, y: 0 };
 
+let tx = null;
+let ty = null;
+let invTx = null;
+let invTy = null;
+
+/* kd-tree for fast search */
+
+class KDNode {
+  constructor(point, axis = 0, left = null, right = null) {
+    this.point = point;
+    this.axis = axis;
+    this.left = left;
+    this.right = right;
+  }
+}
+
+function buildKDTree(points, depth = 0) {
+  if (!points.length) return null;
+
+  const axis = depth % 2;
+  const key = axis === 0 ? "x" : "y";
+
+  points.sort((a, b) => a[key] - b[key]);
+  const mid = Math.floor(points.length / 2);
+
+  return new KDNode(
+    points[mid],
+    axis,
+    buildKDTree(points.slice(0, mid), depth + 1),
+    buildKDTree(points.slice(mid + 1), depth + 1)
+  );
+}
+
+function distSq(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
+}
+
+function nearestKD(node, target, radiusSq = Infinity, best = { point: null, distSq: Infinity }) {
+  if (!node) return best;
+
+  const axis = node.axis;
+  const key = axis === 0 ? 'x' : 'y';
+
+  const d = distSq(target, node.point);
+  if (d < best.distSq && d < radiusSq) {
+    best = { point: node.point, distSq: d };
+  }
+
+  const diff = target[key] - node.point[key];
+  const close = diff < 0 ? node.left : node.right;
+  const away = diff < 0 ? node.right : node.left;
+
+  best = nearestKD(close, target, radiusSq, best);
+
+  // Check if we should search the other branch
+  if (diff * diff < best.distSq) {
+    best = nearestKD(away, target, radiusSq, best);
+  }
+
+  return best;
+}
+
 function getColor(ownerid) {
   const player = starmapData.players.find(p => p.id === ownerid);
   return player ? player.color : "#888888";
@@ -232,6 +304,14 @@ function drawCircle(x, y, radius, color) {
   ctx.arc(x, y, radius, 0, 2 * Math.PI);
   ctx.fillStyle = color;
   ctx.fill();
+}
+
+function drawOpenCircle(x, y, radius, color) {
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, 2 * Math.PI);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.stroke();
 }
 
 function drawCross(x, y, size, color) {
@@ -293,12 +373,20 @@ function drawMap() {
   centerOffsetX = (canvas.width - mapWidth * scaled) / 2;
   centerOffsetY = (canvas.height - mapHeight * scaled) / 2;
 
-  function tx(x) {
+  tx = function(x) {
     return (x - bounds.left) * scaled + centerOffsetX + offsetX;
   }
 
-  function ty(y) {
+  ty = function(y) {
     return (bounds.top - y) * scaled + centerOffsetY + offsetY;
+  }
+
+  invTx = function(sx) {
+    return ((sx - offsetX - centerOffsetX) / scaled) + bounds.left;
+  }
+
+  invTy = function(sy) {
+    return (bounds.top - ((sy - offsetY - centerOffsetY) / scaled));
   }
 
   const planetList = Object.values(starmapData.planets);
@@ -317,11 +405,21 @@ function drawMap() {
       if (starbaseOwner[planet.id]) {
         drawCross(sx, sy, scaleRadius(5, zoom), color);
       }
+      screenPlanets.push({ id: planet.id, name: planet.name, x: sx, y: sy, trueX: position.x, trueY: position.y });
+    }
+  }
 
-      // Only store center tile for hover detection
-      //if (position.primary) {
-        screenPlanets.push({ id: planet.id, name: planet.name, x: sx, y: sy, trueX: position.x, trueY: position.y });
-      //}
+  const slider = document.getElementById("turnSlider");
+  let currentTurn = slider.value;
+  const ships = shiplistData[currentTurn] || {};
+  for (const ship of Object.values(ships)) {
+    const positions = getProjectedPositions(ship.x, ship.y);
+    const color = getColor(ship.ownerid);
+
+    for (const { x, y } of positions) {
+      const sx = tx(x);
+      const sy = ty(y);
+      drawOpenCircle(sx, sy, scaleRadius(3, zoom), color);
     }
   }
 
@@ -349,20 +447,13 @@ canvas.addEventListener('mousemove', (e) => {
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
 
-  let found = null;
-  let minDistSq = Infinity;
-  const hoverRadius = Math.max(6, 10 * zoom);
+  const mapX = invTx(mx);
+  const mapY = invTy(my);
 
-  for (const planet of screenPlanets) {
-    const dx = mx - planet.x;
-    const dy = my - planet.y;
-    const distSq = dx * dx + dy * dy;
-
-    if (distSq < hoverRadius * hoverRadius && distSq < minDistSq) {
-      found = planet;
-      minDistSq = distSq;
-    }
-  }
+  const hoverRadius = Math.max(50, 25 * zoom);
+  const mousePoint = { x: mapX, y: mapY };
+  const result = nearestKD(starmapTree, mousePoint, hoverRadius);
+  const found = result.point;
 
   if (found) {
     const ownerId = planetOwner[found.id] || 0;
@@ -370,7 +461,7 @@ canvas.addEventListener('mousemove', (e) => {
     const ownerName = player ? player.name : "Unowned";
     const ownerColor = player ? player.color : "#888";
 
-    tooltip.textContent = `P${found.id} ${found.name} (${ownerName}) [${found.trueX},${found.trueY}]`;
+    tooltip.textContent = `P${found.id} ${found.name} (${ownerName})`;
     tooltip.style.left = `${e.pageX + 10}px`;
     tooltip.style.top = `${e.pageY + 10}px`;
     tooltip.style.display = 'block';
@@ -412,6 +503,7 @@ window.addEventListener("resize", () => {
 });
 
 function initializeMap() {
+  starmapTree = buildKDTree(starmapData.planets);
   document.getElementById("pageTitle").textContent = starmapData.title || "Starmap";
   document.getElementById("mapTitle").textContent = starmapData.title || "Starmap";
 
