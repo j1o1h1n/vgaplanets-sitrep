@@ -41,18 +41,19 @@
 
     #tooltip {
       position: absolute;
-      background: #24283B;       /* surface */
-      border: 1px solid #7AA2F7; /* secondary */
-      color: #BB9AF7;            /* primary */
-      padding: 4px 8px;
+      background: #24283B;
+      border: 1px solid #7AA2F7;
+      color: #BB9AF7;
+      padding: 6px 10px;
       font-size: 12px;
       font-family: sans-serif;
-      white-space: nowrap;
       pointer-events: none;
       display: none;
       border-left: 6px solid transparent;
       z-index: 10;
-    }    
+      max-width: 300px;
+      white-space: normal;
+    }
 
     #mapTitle {
       font-family: 'Orbitron', sans-serif;
@@ -174,7 +175,7 @@ Promise.all([
 ])
   .then(([starmapData, shiplistData]) => {
     window.starmapData = starmapData;
-    window.shiplistData = shiplistData.shiplist;
+    window.shiplistData = shiplistData;
     initializeMap();
   })
   .catch(err => {
@@ -185,15 +186,25 @@ const canvas = document.getElementById('starmap');
 const ctx = canvas.getContext('2d');
 const tooltip = document.getElementById('tooltip');
 let starmapTree = null;
-let shiplistTree = {};
+const shipTrees = {};
 let screenPlanets = [];
 
-let currentTurnId = "1";
+let maxTurn = 1;
+let currentTurnId = 1;
+
 let isPlaying = false;
 let playInterval = null;
+let animationFrameId = null;
+
+const animationSettings = {
+  framesPerTurn: 30,
+  frameDuration: 1000 / 60, // ~60fps
+  currentFrame: 0,
+  currentTurn: 0
+};
 
 let planetOwner = {};
-let starbaseOwner = {};
+let starbaseSet = new Set();
 
 /* zoom and pan */
 const MIN_ZOOM = 0.2;
@@ -280,6 +291,87 @@ function nearestKD(node, target, radiusSq = Infinity, best = { point: null, dist
   return best;
 }
 
+function rangeKD(node, target, radiusSq, results = []) {
+  if (!node) return results;
+
+  const axis = node.axis;
+  const key = axis === 0 ? 'x' : 'y';
+
+  const dx = target.x - node.point.x;
+  const dy = target.y - node.point.y;
+  const distSq = dx * dx + dy * dy;
+
+  if (distSq <= radiusSq) {
+    results.push({ point: node.point, distSq });
+  }
+
+  const diff = target[key] - node.point[key];
+  const close = diff < 0 ? node.left : node.right;
+  const away = diff < 0 ? node.right : node.left;
+
+  // Always check the close side
+  rangeKD(close, target, radiusSq, results);
+
+  // Check away side only if hyperplane is within radius
+  if (diff * diff <= radiusSq) {
+    rangeKD(away, target, radiusSq, results);
+  }
+
+  return results;
+}
+
+function closestGrouped(results) {
+  if (!results.length) return [];
+
+  // Find the minimum distance
+  let minDistSq = Infinity;
+  for (const r of results) {
+    if (r.distSq < minDistSq) minDistSq = r.distSq;
+  }
+
+  // Filter all results that are exactly at that distance
+  return results.filter(r => r.distSq === minDistSq);
+}
+
+function getPlanetOwners(turnIndex) {
+  const ownerString = starmapData.planet_owners[turnIndex - 1];
+  const owners = {};
+  for (let i = 0; i < ownerString.length; i++) {
+    const ch = ownerString[i];
+    const owner = parseInt(ch, 36);  // base-36 decode
+    owners[i] = owner;  // planet ID is index, planet "0" is unused
+  }
+  return owners;
+}
+
+function getShipsForTurn(turn) {
+  const raw = shiplistData.shiplist[turn - 1];
+  const result = [];
+  if (!raw) return result;
+
+  for (let i = 0; i < raw.length; i += 4) {
+    const [uid, x, y, ammo] = raw.slice(i, i + 4);
+    const info = shiplistData.shipinfo[uid];
+    if (!info) continue;
+    result.push({
+      uid,
+      id: info.id,
+      name: info.name,
+      x,
+      y,
+      ammo,
+      ownerid: info.ownerid,
+      desc: shiplistData.shipdescs[info.shipdesc],
+      bv: info.bv
+    });
+  }
+  return result;
+}
+
+function isStarbase(planetId) {
+  return starbaseSet.has(planetId);
+}
+
 function getColor(ownerid) {
   const player = starmapData.players.find(p => p.id === ownerid);
   return player ? player.color : "#888888";
@@ -287,9 +379,8 @@ function getColor(ownerid) {
 
 function updateTurn(turnId) {
   currentTurnId = turnId;
-  const turn = starmapData.turns[turnId];
-  planetOwner = turn.planet_owner || {};
-  starbaseOwner = turn.starbase_owner || {};
+  planetOwner = getPlanetOwners(currentTurnId)
+  starbaseSet = new Set(starmapData.starbases[currentTurnId - 1] || []);
   document.getElementById("turnLabel").textContent = turnId;
   drawMap();
 }
@@ -348,7 +439,32 @@ function getProjectedPositions(x, y) {
   }));
 }
 
-function drawMap() {
+function interpolate(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function interpolateWrapped(a, b, range, t) {
+  let delta = b - a;
+
+  if (Math.abs(delta) > range / 2) {
+    // Take the wrapped (shorter) path
+    if (delta > 0) {
+      b -= range;
+    } else {
+      b += range;
+    }
+  }
+
+  return a + (b - a) * t;
+}
+
+function drawMap(options = {}) {
+  const {
+    turn = currentTurnId,
+    nextTurn = null,
+    t = 0  // t: 0.0–1.0 interpolation factor between turn and nextTurn
+  } = options;
+
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   screenPlanets = [];
 
@@ -402,24 +518,53 @@ function drawMap() {
       const sy = Math.trunc(ty(position.y));
       drawCircle(sx, sy, scaleRadius(1, zoom), color);
 
-      if (starbaseOwner[planet.id]) {
+      if (isStarbase(planet.id)) {
         drawCross(sx, sy, scaleRadius(5, zoom), color);
       }
       screenPlanets.push({ id: planet.id, name: planet.name, x: sx, y: sy, trueX: position.x, trueY: position.y });
     }
   }
 
-  const slider = document.getElementById("turnSlider");
-  let currentTurn = slider.value;
-  const ships = shiplistData[currentTurn] || {};
-  for (const ship of Object.values(ships)) {
-    const positions = getProjectedPositions(ship.x, ship.y);
-    const color = getColor(ship.ownerid);
+  const shipsA = getShipsForTurn(turn);
+  const shipsB = nextTurn !== null ? getShipsForTurn(nextTurn) || [] : [];
 
-    for (const { x, y } of positions) {
-      const sx = tx(x);
-      const sy = ty(y);
-      drawOpenCircle(sx, sy, scaleRadius(3, zoom), color);
+  const shipMapB = new Map(shipsB.map(s => [s.id, s]));
+
+  for (const shipA of shipsA) {
+    const shipB = shipMapB.get(shipA.id);
+    let x = shipA.x;
+    let y = shipA.y;
+
+    if (shipB && nextTurn !== null) {
+      // Interpolate position
+      x = interpolateWrapped(shipA.x, shipB.x, trueWidth, t);
+      y = interpolateWrapped(shipA.y, shipB.y, trueHeight, t);
+
+      // Draw partial trail
+      const maxTrail = 1.0;
+      const trailBack = maxTrail * (1 - t);  // shrinking trail
+      const fStart = Math.max(0, t - trailBack);
+      const fEnd = t;
+
+      const x0 = tx(interpolateWrapped(shipA.x, shipB.x, trueWidth, fStart));
+      const y0 = ty(interpolateWrapped(shipA.y, shipB.y, trueHeight, fStart));
+      const x1 = tx(interpolateWrapped(shipA.x, shipB.x, trueWidth, fEnd));
+      const y1 = ty(interpolateWrapped(shipA.y, shipB.y, trueHeight, fEnd));
+
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.strokeStyle = getColor(shipA.ownerid);
+      ctx.lineWidth = 1;
+      ctx.setLineDash([1, 4]);  // Dotted trail
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    const color = getColor(shipA.ownerid);
+    const positions = getProjectedPositions(x, y);
+    for (const { x: px, y: py } of positions) {
+      drawOpenCircle(tx(px), ty(py), scaleRadius(6, zoom), color);
     }
   }
 
@@ -441,7 +586,6 @@ function drawMap() {
   updateZoomIndicator()
 }
 
-
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
@@ -449,23 +593,46 @@ canvas.addEventListener('mousemove', (e) => {
 
   const mapX = invTx(mx);
   const mapY = invTy(my);
+  let hoverRadius = Math.min(Math.max(50, 25 * zoom), 100);
+  let mousePoint = { x: mapX, y: mapY };
 
-  const hoverRadius = Math.max(50, 25 * zoom);
-  const mousePoint = { x: mapX, y: mapY };
-  const result = nearestKD(starmapTree, mousePoint, hoverRadius);
-  const found = result.point;
+  const planetResult = nearestKD(starmapTree, mousePoint, hoverRadius);
+  const planet = planetResult.point;
 
-  if (found) {
-    const ownerId = planetOwner[found.id] || 0;
-    const player = starmapData.players.find(p => p.id === ownerId);
-    const ownerName = player ? player.name : "Unowned";
-    const ownerColor = player ? player.color : "#888";
+  const turn = parseInt(document.getElementById("turnSlider").value);
+  const shipTree = shipTrees[turn];
+  const shipMatches = closestGrouped(shipTree ? rangeKD(shipTree, mousePoint, hoverRadius) : []);
 
-    tooltip.textContent = `P${found.id} ${found.name} (${ownerName})`;
+  if (planet || shipMatches.length > 0) {
+    let html = "";
+
+    // Ships
+    for (const match of shipMatches) {
+      const ship = match.point;
+      const player = starmapData.players.find(p => p.id === ship.ownerid);
+      const color = player ? player.color : "#888";
+      const desc = ship.desc;
+      const ammoText = ship.bv > 0 ? `/${ship.ammo}` : "";
+      html += `<div style="color: ${color};"> ❯ S${ship.id} ${ship.name} - ${desc}${ammoText}</div>`;
+    }
+
+    // Planet
+    if (planet) {
+      const ownerId = planetOwner[planet.id] || 0;
+      const player = starmapData.players.find(p => p.id === ownerId);
+      const ownerName = player ? player.name : "Unowned";
+      const ownerColor = player ? player.color : "#888";
+      const star = isStarbase(planet.id) ? "⨁" : "";
+      html += `<div style="margin-top: 4px; color: ${ownerColor};">${star} P${planet.id} ${planet.name} (${ownerName}) [${planet.x},${planet.y}]</div>`;
+      tooltip.style.borderLeftColor = ownerColor;
+    } else {
+      tooltip.style.borderLeftColor = "#666";
+    }
+
+    tooltip.innerHTML = html;
     tooltip.style.left = `${e.pageX + 10}px`;
     tooltip.style.top = `${e.pageY + 10}px`;
     tooltip.style.display = 'block';
-    tooltip.style.borderLeftColor = ownerColor;
   } else {
     tooltip.style.display = 'none';
   }
@@ -503,7 +670,13 @@ window.addEventListener("resize", () => {
 });
 
 function initializeMap() {
+  // build kdtree for planets
   starmapTree = buildKDTree(starmapData.planets);
+  // build kdtree for ships for each turn
+  for (let turn = 0; turn < shiplistData.shiplist.length; turn++) {
+    shipTrees[turn] = buildKDTree(getShipsForTurn(turn));
+  }
+
   document.getElementById("pageTitle").textContent = starmapData.title || "Starmap";
   document.getElementById("mapTitle").textContent = starmapData.title || "Starmap";
 
@@ -530,12 +703,11 @@ function initializeMap() {
   });
 
   const slider = document.getElementById("turnSlider");
-  const maxTurn = Math.max(...Object.keys(starmapData.turns).map(Number));
+  maxTurn = starmapData.turns;
   slider.max = maxTurn;
   slider.value = 1;
-
   slider.addEventListener("input", () => {
-    updateTurn(slider.value);
+    updateTurn(parseInt(slider.value));
   });
 
   document.getElementById("playPauseButton").addEventListener("click", togglePlayPause);
@@ -544,7 +716,7 @@ function initializeMap() {
     let current = parseInt(slider.value);
     if (current > 1) {
       slider.value = current - 1;
-      updateTurn(slider.value);
+      updateTurn(parseInt(slider.value));
     }
   });
 
@@ -552,7 +724,7 @@ function initializeMap() {
     let current = parseInt(slider.value);
     if (current < maxTurn) {
       slider.value = current + 1;
-      updateTurn(slider.value);
+      updateTurn(parseInt(slider.value));
     }
   });
 
@@ -574,38 +746,65 @@ function initializeMap() {
   });
 
   resizeCanvasToMapAspect();
-  updateTurn("1");
+  updateTurn(1);
+}
+
+function animateStep() {
+  const {
+    currentTurn,
+    currentFrame,
+    framesPerTurn
+  } = animationSettings;
+
+  const nextTurn = currentTurn + 1;
+  const slider = document.getElementById("turnSlider");
+  const max = parseInt(slider.max);
+
+  const t = currentFrame / framesPerTurn;
+  drawMap({ turn: currentTurn, nextTurn, t });
+
+  animationSettings.currentFrame++;
+
+  if (animationSettings.currentFrame < framesPerTurn) {
+    animationFrameId = requestAnimationFrame(animateStep);
+  } else {
+    animationSettings.currentTurn++;
+    slider.value = animationSettings.currentTurn;
+    updateTurn(animationSettings.currentTurn); // update other UI
+
+    if (animationSettings.currentTurn >= max) {
+      togglePlayPause(); // Stop at last turn
+    } else {
+      animationSettings.currentFrame = 0;
+      animationFrameId = requestAnimationFrame(animateStep);
+    }
+  }
 }
 
 function togglePlayPause() {
   const button = document.getElementById("playPauseButton");
 
   if (isPlaying) {
-    clearInterval(playInterval);
-    playInterval = null;
-    button.textContent = "▶️";
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
     isPlaying = false;
+    button.textContent = "▶️";
   } else {
     isPlaying = true;
     button.textContent = "⏸️";
-    playInterval = setInterval(() => {
-      const slider = document.getElementById("turnSlider");
-      let current = parseInt(slider.value);
-      const max = parseInt(slider.max);
-      if (current < max) {
-        slider.value = current + 1;
-        updateTurn(slider.value);
-      } else {
-        togglePlayPause(); // Stop at last turn
-      }
-    }, 800); // 800 ms per turn
+
+    const slider = document.getElementById("turnSlider");
+    animationSettings.currentTurn = parseInt(slider.value);
+    animationSettings.currentFrame = 0;
+
+    requestAnimationFrame(animateStep);
   }
 }
 
 function rewind() {
   const slider = document.getElementById("turnSlider");
   slider.value = 1;
-  updateTurn("1");
+  updateTurn(1);
   if (isPlaying) togglePlayPause(); // Stop playback if active
 }
 
