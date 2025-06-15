@@ -344,26 +344,43 @@ function getPlanetOwners(turnIndex) {
   return owners;
 }
 
+
 function getShipsForTurn(turn) {
   const raw = shiplistData.shiplist[turn - 1];
   const result = [];
   if (!raw) return result;
 
-  for (let i = 0; i < raw.length; i += 4) {
-    const [uid, x, y, ammo] = raw.slice(i, i + 4);
-    const info = shiplistData.shipinfo[uid];
-    if (!info) continue;
-    result.push({
-      uid,
-      id: info.id,
-      name: info.name,
-      x,
-      y,
-      ammo,
-      ownerid: info.ownerid,
-      desc: shiplistData.shipdescs[info.shipdesc],
-      bv: info.bv
-    });
+  for (const key in raw) {
+    const [xStr, yStr] = key.split(",");
+    const x = parseInt(xStr, 10);
+    const y = parseInt(yStr, 10);
+
+    const values = raw[key];
+    for (let i = 0; i < values.length; i += 2) {
+      const uid = values[i];
+      const ammo = values[i + 1];
+
+      const info = shiplistData.shipinfo[uid];
+      if (!info) continue;
+      rec = shiplistData.shipdescs[info.shipdesc]
+      shipdesc = rec[0]
+      bv = rec[1]
+      dv = rec[2]
+      sv = bv + (dv * 2)
+      result.push({
+        uid,
+        id: info.id,
+        name: info.name,
+        x,
+        y,
+        ammo,
+        ownerid: info.ownerid,
+        desc: shipdesc,
+        bv: bv,
+        dv: dv,
+        sv: sv
+      });
+    }
   }
   return result;
 }
@@ -398,8 +415,9 @@ function drawCircle(x, y, radius, color) {
 }
 
 function drawOpenCircle(x, y, radius, color) {
+  const OFFSET = -1
   ctx.beginPath();
-  ctx.arc(x, y, radius, 0, 2 * Math.PI);
+  ctx.arc(x + OFFSET, y + OFFSET, radius, 0, 2 * Math.PI);
   ctx.strokeStyle = color;
   ctx.lineWidth = 1;
   ctx.stroke();
@@ -413,6 +431,68 @@ function drawCross(x, y, size, color) {
   ctx.lineTo(x + size, y);
   ctx.moveTo(x, y - size);
   ctx.lineTo(x, y + size);
+  ctx.stroke();
+}
+
+function drawRect(x, y, size, color) {
+  const width = size * Math.SQRT2;
+  const height = size;
+  const halfW = width / 2;
+  const halfH = height / 2;
+
+  const topLeft = { x: x - halfW, y: y - halfH };
+  const topRight = { x: x + halfW, y: y - halfH };
+  const bottomRight = { x: x + halfW, y: y + halfH };
+  const bottomLeft = { x: x - halfW, y: y + halfH };
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(topLeft.x, topLeft.y, width, height);
+
+  return { topLeft, topRight, bottomRight, bottomLeft };
+}
+
+function drawLeftSlash(corners, color) {
+  ctx.beginPath();
+  ctx.moveTo(corners.topLeft.x, corners.topLeft.y);
+  ctx.lineTo(corners.bottomRight.x, corners.bottomRight.y);
+  ctx.strokeStyle = color;
+  ctx.stroke();
+}
+
+function drawRightSlash(corners, color) {
+  ctx.beginPath();
+  ctx.moveTo(corners.topRight.x, corners.topRight.y);
+  ctx.lineTo(corners.bottomLeft.x, corners.bottomLeft.y);
+  ctx.strokeStyle = color;
+  ctx.stroke();
+}
+
+function drawSlashedRect(x, y, size, color) {
+  const corners = drawRect(x, y, size, color);
+  drawLeftSlash(corners, color);
+}
+
+function drawCrossedRect(x, y, size, color) {
+  const corners = drawRect(x, y, size, color);
+  drawLeftSlash(corners, color);
+  drawRightSlash(corners, color);
+}
+
+function drawTriangle(x, y, size, color) {
+  const Y_OFFSET = -3
+  const base = size * Math.SQRT2;
+  const halfBase = base / 2;
+  const halfHeight = size / 2;
+
+  ctx.beginPath();
+  ctx.moveTo(x, y - halfHeight + Y_OFFSET);                 // Top vertex
+  ctx.lineTo(x - halfBase, y + halfHeight + Y_OFFSET);      // Bottom left
+  ctx.lineTo(x + halfBase, y + halfHeight + Y_OFFSET);      // Bottom right
+  ctx.closePath();
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
   ctx.stroke();
 }
 
@@ -525,13 +605,16 @@ function drawMap(options = {}) {
     }
   }
 
+  const drawnPositions = new Set();
   const shipsA = getShipsForTurn(turn);
+  // Sort by sv descending, so we can only draw the highest sv ship at a given location 
+  shipsA.sort((a, b) => b.sv - a.sv);
   const shipsB = nextTurn !== null ? getShipsForTurn(nextTurn) || [] : [];
 
-  const shipMapB = new Map(shipsB.map(s => [s.id, s]));
+  const shipMapB = new Map(shipsB.map(s => [s.uid, s]));
 
   for (const shipA of shipsA) {
-    const shipB = shipMapB.get(shipA.id);
+    const shipB = shipMapB.get(shipA.uid);
     let x = shipA.x;
     let y = shipA.y;
 
@@ -555,7 +638,7 @@ function drawMap(options = {}) {
       ctx.moveTo(x0, y0);
       ctx.lineTo(x1, y1);
       ctx.strokeStyle = getColor(shipA.ownerid);
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 3;
       ctx.setLineDash([1, 4]);  // Dotted trail
       ctx.stroke();
       ctx.setLineDash([]);
@@ -563,8 +646,30 @@ function drawMap(options = {}) {
 
     const color = getColor(shipA.ownerid);
     const positions = getProjectedPositions(x, y);
+    const sv = shipA.sv;
     for (const { x: px, y: py } of positions) {
-      drawOpenCircle(tx(px), ty(py), scaleRadius(6, zoom), color);
+      const key = `${px},${py}`;
+      if (drawnPositions.has(key)) continue;
+
+      drawnPositions.add(key);
+      const sx = tx(px);
+      const sy = ty(py);
+      const r = scaleRadius(6, zoom);
+
+      // Choose shape by SV thresholds
+      if (sv >= 2000) {
+        drawCrossedRect(sx, sy, r, color);
+      } else if (sv >= 1500) {
+        drawSlashedRect(sx, sy, r, color);
+      } else if (sv >= 1000) {
+        drawRect(sx, sy, r, color);
+      } else if (sv >= 500) {
+        drawTriangle(sx, sy, r, color);
+      } else if (sv >= 250) {
+        drawOpenCircle(sx, sy, scaleRadius(4, zoom), color);
+      } else {
+        drawOpenCircle(sx, sy, scaleRadius(2, zoom), color);
+      }
     }
   }
 
@@ -607,13 +712,14 @@ canvas.addEventListener('mousemove', (e) => {
     let html = "";
 
     // Ships
+    shipMatches.sort((a, b) => a.point.sv - b.point.sv);
     for (const match of shipMatches) {
       const ship = match.point;
       const player = starmapData.players.find(p => p.id === ship.ownerid);
       const color = player ? player.color : "#888";
       const desc = ship.desc;
       const ammoText = ship.bv > 0 ? `/${ship.ammo}` : "";
-      html += `<div style="color: ${color};"> ❯ S${ship.id} ${ship.name} - ${desc}${ammoText}</div>`;
+      html += `<div style="color: ${color};"> ❯ S${ship.id} ${ship.name} - ${desc}${ammoText} [${ship.uid}]</div>`;
     }
 
     // Planet
@@ -623,7 +729,7 @@ canvas.addEventListener('mousemove', (e) => {
       const ownerName = player ? player.name : "Unowned";
       const ownerColor = player ? player.color : "#888";
       const star = isStarbase(planet.id) ? "⨁" : "";
-      html += `<div style="margin-top: 4px; color: ${ownerColor};">${star} P${planet.id} ${planet.name} (${ownerName}) [${planet.x},${planet.y}]</div>`;
+      html += `<div style="margin-top: 4px; color: ${ownerColor};">${star} P${planet.id} ${planet.name} (${ownerName})</div>`;
       tooltip.style.borderLeftColor = ownerColor;
     } else {
       tooltip.style.borderLeftColor = "#666";

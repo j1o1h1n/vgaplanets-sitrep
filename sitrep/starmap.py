@@ -1,3 +1,4 @@
+import copy
 import re
 import string
 import json
@@ -50,10 +51,13 @@ FIGHTER_BV = 100
 def get_battle_value(ship, hull):
     if ship['beams'] == 0 and ship['torps'] == 0 and hull['fighterbays'] == 0:
         return 0, 0
+    ev = ship['engineid']
     bv = (ship['beams'] * BEAM_BV[ship['beamid'] - 1]) + \
          (ship['torps'] * TORP_BV[ship['torpedoid'] - 1]) + \
-         (hull.get("fighterbays", 0) * FIGHTER_BV)
-    return bv, hull['mass']
+         (hull.get("fighterbays", 0) * FIGHTER_BV) + \
+         (ev * 10)
+
+    return bv, hull['mass'] + (ev * 10)
 
 
 def short_hull_name(hull: dict[str,str|int]) -> str:
@@ -196,6 +200,10 @@ def write_starmap(game: vgap.Game, output_path: str):
         f.write(output)
 
 
+def match_ship(lhs, rhs):
+    return lhs['id'] == rhs['id'] and lhs['shipdesc'] == rhs['shipdesc'] and lhs['ownerid'] == rhs['ownerid']
+
+
 def build_shiplist(game: vgap.Game) -> dict[str,Any]:
     players = list(game.players.values())
 
@@ -226,9 +234,11 @@ def build_shiplist(game: vgap.Game) -> dict[str,Any]:
             if hulls is None:
                 hulls = {h['id']:h for h in turn.data["hulls"]}
             if turn.turn_id not in turninfo:
-                turninfo[turn.turn_id] = []
-            ships = [(ship["id"], build_ship_desc(ship, hulls), ship) for ship in turn.ships(player_id)]
-            for shipid, shipdesc, ship in ships:
+                turninfo[turn.turn_id] = {}
+            ships = turn.ships(player_id)
+            for ship in ships:
+                shipid = ship['id']
+                shipdesc = build_ship_desc(ship, hulls)
                 bv, dv = get_battle_value(ship, hulls[ship['hullid']])
                 if shipdesc not in shipdesc_ids:
                     shipdesc_id = len(shipdesc_ids)
@@ -237,21 +247,26 @@ def build_shiplist(game: vgap.Game) -> dict[str,Any]:
                 shipdesc_id = shipdesc_ids[shipdesc]
                 rec = {"id": shipid, "name": ship["name"], "shipdesc": shipdesc_id, "ownerid": player_id}
                 
-                if shipid not in shipid_to_uid or shipinfo[shipid_to_uid[shipid]] != rec:
+                prev_id_uid = shipid_to_uid.get(shipid, None)
+                if prev_id_uid is None or not match_ship(shipinfo[prev_id_uid], rec):
                     # new uid
                     uid = next_uid
                     next_uid += 1
                     shipid_to_uid[shipid] = uid
                     shipinfo[uid] = rec
-            
                 uid = shipid_to_uid[shipid]
-                x, y = ship["x"], ship["y"]
+
+                # update name so last name is used
+                shipinfo[uid]["name"] = ship["name"]
+                loc = f'{ship["x"]},{ship["y"]}'
                 ammo = ship["ammo"]
-                turninfo[turn.turn_id].extend([uid, x, y, ammo])
+                if loc not in turninfo[turn.turn_id]:
+                    turninfo[turn.turn_id][loc] = []
+                turninfo[turn.turn_id][loc].extend([uid, ammo])
 
     shiplist = []
     for i in range(max(turninfo.keys())):
-        shiplist.append(turninfo.get(i + 1, []))
+        shiplist.append(turninfo.get(i + 1, {}))
 
     return {"shipinfo": shipinfo, "shipdescs": shipdescs, "shiplist": shiplist}
 
