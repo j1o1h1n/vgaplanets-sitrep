@@ -47,6 +47,20 @@ TORP_BV = [30, 36, 40, 4,
 
 FIGHTER_BV = 100
 
+PLAYER_COLORS = [
+  '#a6cee3',
+  '#1e77b4',
+  '#b2df8a',
+  '#32a02b',
+  '#fb9a99',
+  '#e3191b',
+  '#fdbf6e',
+  '#ff7e00',
+  '#cab2d6',
+  '#693c9a',
+  '#ffff99',
+  '#b15827'
+];
 
 def get_battle_value(ship, hull):
     if ship['beams'] == 0 and ship['torps'] == 0 and hull['fighterbays'] == 0:
@@ -153,7 +167,10 @@ def build_starmap(game: vgap.Game) -> dict:
     planet_owners = [encode(turninfo[t]['planet_owner']) for t in turninfo]
     starbases = [list(turninfo[t]["starbases"]) for t in turninfo]
 
-    return {"planets": planets, "planet_owners": planet_owners, "starbases": starbases, "turns": max(turninfo.keys())}
+    # starclusters
+    starclusters = game.turns()[1].data["stars"]
+
+    return {"planets": planets, "starclusters": starclusters, "planet_owners": planet_owners, "starbases": starbases, "turns": max(turninfo.keys())}
 
 
 def write_starmap(game: vgap.Game, output_path: str):
@@ -163,7 +180,7 @@ def write_starmap(game: vgap.Game, output_path: str):
     mapwidth = settings["mapwidth"]
     mapheight = settings["mapheight"]
     players = [
-        { "id": p.player_id, "name": p.name, "race": p.short_name, "color": p.color }
+        { "id": p.player_id, "name": p.name, "race": p.short_name, "color": PLAYER_COLORS[p.player_id % len(PLAYER_COLORS)] }
         for p in game.players.values()
     ]
 
@@ -171,6 +188,7 @@ def write_starmap(game: vgap.Game, output_path: str):
     turns = data['turns']
     players_data = ",\n".join(["    " + json.dumps(val) for val in players])
     planets_data = ",\n".join(["    " + json.dumps(val) for val in data["planets"].values()])
+    starclusters_data = ",\n".join(["    " + json.dumps(val) for val in data["starclusters"]])
     planet_owners_data = ",\n".join(["    " + json.dumps(val) for val in data["planet_owners"]])
     starbases_data = ",\n".join(["    " + json.dumps(val) for val in data["starbases"]])
 
@@ -186,6 +204,9 @@ def write_starmap(game: vgap.Game, output_path: str):
   ],
   "planets": [
 {planets_data}
+  ],
+  "starclusters": [
+{starclusters_data}
   ],
   "planet_owners": [
 {planet_owners_data}

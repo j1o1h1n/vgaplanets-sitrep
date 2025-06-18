@@ -5,207 +5,235 @@
   <title id="pageTitle">VGAP Starmap</title>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
   <style>
-    body {
-      margin: 10;
-      font-family: sans-serif;
-      background-color: #1A1B26; /* background */
-      color: #7AA2F7;            /* secondary */
-    }
 
-    canvas { border: 1px solid #ccc; background-color: black; }
+:root {
+  /* Colours */
+  --color-bg:        #1A1B26;
+  --color-secondary: #7AA2F7;
+  --color-primary:   #BB9AF7;
+  --color-panel:     #414868;
+  --color-surface:   #24283B;
+  --color-hover:     #8AB2FF;
+  --color-zoom-text: #a9b1d6;
+  --color-explosion: #FFB86C;
 
-    input[type="color"] {
-      background: none;
-      border: none;
-      cursor: pointer;
-    }
+  /* Fonts */
+  --font-main:     sans-serif;
+  --font-display:  'Orbitron', sans-serif;
 
-    input[type="range"] {
-      margin: 3px;
-      accent-color: #7AA2F7;
-    }
+  /* Spacing */
+  --sp-sm: 4px;
+  --sp-md: 6px;
+  --sp-lg: 8px;
+}
 
-    button {
-      background-color: #7AA2F7;  /* secondary */
-      color: #24283B;             /* button-color-foreground */
-      border: none;
-      padding: 6px 10px;
-      margin: 4px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-    button:hover {
-      background-color: #8AB2FF; /* primary on hover */
-    }
+body {
+  margin: 10px;
+  font-family: var(--font-main);
+  background: var(--color-bg);
+  color: var(--color-secondary);
+}
 
-    h1, h2, h3, h4 {
-      font-family: 'Orbitron', sans-serif;
-      letter-spacing: 0.06em;
-      color: #BB9AF7; /* theme primary color */
-      margin-top: 0.7em;
-      margin-bottom: 0.5em;
-      padding-bottom: 0.2em;
-    }
+canvas {
+  display: block;
+  border: 1px solid #ccc;
+  background: #000;
+}
 
-    h1 {
-      font-size: 2em;
-    }
+input[type="color"],
+button {
+  border: none;
+  cursor: pointer;
+}
 
-    h2 {
-      font-size: 1.75em;
-    }
+input[type="color"] {
+  background: none;
+}
 
-    h3 {
-      font-size: 1.5em;
-    }
+input[type="range"] {
+  margin: 3px;
+  accent-color: var(--color-secondary);
+}
 
-    h4 {
-      font-size: 1.25em;
-    }
+button {
+  background: var(--color-secondary);
+  color: #24283B;
+  padding: var(--sp-md) var(--sp-lg);
+  margin: var(--sp-md);
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+button:hover {
+  background: var(--color-hover);
+}
 
-    #tooltip {
-      position: absolute;
-      background: #24283B;
-      border: 1px solid #7AA2F7;
-      color: #BB9AF7;
-      padding: 6px 10px;
-      font-size: 12px;
-      font-family: sans-serif;
-      pointer-events: none;
-      display: none;
-      border-left: 6px solid transparent;
-      z-index: 10;
-      max-width: 300px;
-      white-space: normal;
-    }
+/* Headings */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: 0.06em;
+  color: var(--color-primary);
+  margin: 0.7em 0 0.5em;
+  padding-bottom: 0.2em;
+}
+h1 { font-size: 2rem; }
+h2 { font-size: 1.75rem; }
+h3 { font-size: 1.5rem; }
+h4 { font-size: 1.25rem; }
 
-    #mainLayout {
-      display: flex;
-      align-items: flex-start;
-      gap: 20px;
-      padding: 20px;
-      background-color: #1A1B26; /* background */
-    }
+/* Tooltip */
+#tooltip {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-secondary);
+  border-left: 6px solid transparent;
+  color: var(--color-primary);
+  padding: var(--sp-md) var(--sp-lg);
+  font-family: var(--font-main);
+  font-size: 12px;
+  max-width: 300px;
+  white-space: normal;
+  z-index: 10;
+}
 
-    #canvasWrapper {
-      max-width: 900px;
-      width: 85vw;
-      height: 85vh; /* fit most of the viewport */
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      background-color: #1A1B26; /* match theme background */
-    }
+/* Layout */
+#mainLayout {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 20px;
+  background: var(--color-bg);
+}
 
-    #starmap {
-      display: block;
-      border: 1px solid #414868; /* panel border */
-      background-color: black;
-    }
+#canvasWrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 85vw;
+  height: 85vh;
+  max-width: 900px;
+  background: var(--color-bg);
+}
 
-    #sidebar {
-      font-family: sans-serif;
-      background-color: #414868;  /* panel */
-      padding: 8px;
-      border-radius: 8px;
-      min-width: 250px;
-    }
+/* Starmap */
+#starmap {
+  border: 1px solid var(--color-panel);
+  background: #000;
+}
 
-    #playerTable {
-      width: 100%;
-      border-collapse: collapse;
-      background-color: #24283B; /* surface */
-      color: #7AA2F7;            /* secondary */
-      border-radius: 6px;
-    }
+/* Sidebar */
+#sidebar {
+  min-width: 250px;
+  padding: var(--sp-lg);
+  background: var(--color-panel);
+  border-radius: 8px;
+  font-family: var(--font-main);
+}
 
-    #playerTable th {
-      background-color: #414868; /* panel */
-      color: #BB9AF7;            /* primary */
-      padding: 6px;
-      text-align: left;
-      border-bottom: 1px solid #1A1B26;
-    }
+/* Player table */
+#playerTable {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+  color: var(--color-secondary);
+  border-radius: 6px;
+  overflow: hidden;
+}
+#playerTable th,
+#playerTable td {
+  padding: var(--sp-md);
+}
+#playerTable th {
+  background: var(--color-panel);
+  color: var(--color-primary);
+  text-align: left;
+  border-bottom: 1px solid var(--color-bg);
+}
+#playerTable td {
+  font-size: 14px;
+}
 
-    #playerTable td {
-      padding: 6px;
-      font-size: 14px;
-    }
+/* Controls */
+#controls {
+  padding: 0 20px;
+}
 
-    #controls {
-      padding: 0px 20px;
-    }
+/* Zoom indicator */
+#zoom-indicator {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(36, 40, 59, 0.8);
+  color: var(--color-zoom-text);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+  pointer-events: none;
+}
 
-    #zoom-indicator {
-      position: absolute;
-      bottom: 10px;
-      right: 10px;
-      color: #a9b1d6; /* foreground from tokyo-night */
-      background: rgba(36, 40, 59, 0.8); /* surface with transparency */
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-family: monospace;
-      pointer-events: none;
-    }
+/* Bubbles (sidebar sections) */
+#bubble {
+  background: var(--color-panel);
+  padding: var(--sp-lg);
+  margin-bottom: var(--sp-lg);
+}
 
-    #bubble {
-      background-color: #414868; /* panel */
-      padding: 8px;
-      margin-bottom: 8px;
-    }
+/* Player header toggle */
+#playerHeader {
+  font-size: 1.2rem;
+  color: var(--color-primary);
+  margin: var(--sp-sm) 0;
+  cursor: pointer;
+}
 
-    #playerHeader {
-      color: #BB9AF7; /* primary */
-      margin: 4px;
-      font-size: 1.2em;
-      cursor: pointer;
-    }
+/* Compressed player colours */
+#playerCompressed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.playerBox {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: var(--font-main);
+}
 
-    #playerCompressed {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 8px;
-    }
+/* News list */
+#newsList {
+  font-family: var(--font-main);
+  font-size: 12px;
+  color: #E0E0E0;
+  margin-top: 0.5em;
+}
+.newsBlock {
+  padding-left: 0.3em;
+}
+#newsList ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+#newsList li {
+  padding: 1px 0;
+  line-height: 1.3em;
+}
+#newsList li.explosion {
+  padding-left: 0.8em;
+  color: var(--color-explosion);
+}
 
-    .playerBox {
-      background-color: #24283B;
-      color: #BB9AF7;
-      padding: 4px 6px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-family: sans-serif;
-      cursor: default;
-    }
-
-    #newsList {
-      font-family: sans-serif;
-      font-size: 12px;
-      color: #E0E0E0;
-      margin-top: 0.5em;
-    }
-
-    .newsBlock {
-      padding-left: 0.3em;
-    }
-
-    #newsList ul {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-    }
-
-    #newsList li {
-      padding: 1px 0;
-      line-height: 1.3em;
-    }
-
-    #newsList li.explosion {
-      padding-left: 0.8em;
-      color: #FFB86C;
-    }
   </style>
 </head>
 <body>
@@ -246,24 +274,7 @@
     </div>
     <div id="bubble">
       <h4 id="newsTitle">News</h4>
-      <ul id="XXXnewsList"></ul>
-
-      <div id="newsList">
-        <div class="newsBlock">
-          <ul>
-            <li>S10 LARGE DEEP SPACE FREIGHTER (2) ☠️ vs S75 LOKI CLASS DESTROYER (1)</li>
-            <li>S75 LOKI CLASS DESTROYER (1) vs ◯ P109 Backinfuture (2) ☠️</li>
-            <li class="explosion">💥 LARGE DEEP SPACE FREIGHTER</li>
-          </ul>
-        </div>
-
-        <div class="newsBlock">
-          <ul>
-            <li>S68 IFL U Can't Touch This (5) ☠️ vs S65 DWARFSTAR CLASS TRANSPORT (6)</li>
-          </ul>
-        </div>
-      </div>
-
+      <ul id="newsList"></ul>
     </div>
   </div>
 </div>
@@ -287,12 +298,15 @@ Promise.all([
     console.error("Failed to load data:", err);
   });
 
+
 const canvas = document.getElementById('starmap');
 const ctx = canvas.getContext('2d');
 const tooltip = document.getElementById('tooltip');
 let starmapTree = null;
 const shipTrees = {};
 const newsTrees = {};
+const starClusters = [];
+
 let screenPlanets = [];
 
 let maxTurn = 1;
@@ -313,10 +327,10 @@ let planetOwner = {};
 let starbaseSet = new Set();
 
 /* zoom and pan */
-const MIN_ZOOM = 0.2;
-const MAX_ZOOM = 5.0;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 10.0;
 
-let zoom = 1.0;
+let zoom = 1.5;
 let mapWidth = 0;
 let mapHeight = 0;
 let bounds = {
@@ -514,6 +528,21 @@ function scaleRadius(base, zoom, min = 2) {
   return Math.max(min, Math.min(max, base * zoom));
 }
 
+function hexToR(h) { return parseInt((cutHex(h)).substring(0, 2), 16) }
+function hexToG(h) { return parseInt((cutHex(h)).substring(2, 4), 16) }
+function hexToB(h) { return parseInt((cutHex(h)).substring(4, 6), 16) }
+function cutHex(h) { return (h.charAt(0) == "#") ? h.substring(1, 7) : h }
+
+function colorToRGBA(color, alpha) {
+    if (color.startsWith("rgba("))
+        return color;
+    var red = hexToR(color);
+    var green = hexToG(color);
+    var blue = hexToB(color);
+
+    return "rgba(" + red + ", " + green + ", " + blue + ", " + alpha + ")";
+}
+
 function drawCircle(x, y, radius, color) {
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, 2 * Math.PI);
@@ -601,6 +630,62 @@ function drawTriangle(x, y, size, color) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 1;
   ctx.stroke();
+}
+
+function drawStarCluster(x, y, star) {
+  var rad = star.radius * zoom;
+
+  var color = "#FF0000";
+  if (star.temp > 3000 && star.temp <= 6000)
+      color = "#FFA500";
+  if (star.temp > 6000 && star.temp <= 10000)
+      color = "#A52A2A";
+  if (star.temp > 10000 && star.temp <= 20000)
+      color = "#FFFFFF";
+  if (star.temp > 20000)
+      color = "#B0E0E6";
+
+  //radiation
+  var opacity = Math.max(0.4 * star.temp / 65000, 0.2);
+  var edge = 0.01;
+
+  var effectRad = Math.sqrt(star.mass) * zoom;
+  var grad = ctx.createRadialGradient(x, y, 0, x, y, effectRad);
+  grad.addColorStop(0, colorToRGBA(color, opacity));
+  grad.addColorStop(1, colorToRGBA(color, edge));
+  ctx.fillStyle = grad;
+
+  ctx.beginPath();
+  ctx.arc(x, y, effectRad * .67, 0, Math.PI * 2, false);
+  ctx.closePath();
+  ctx.fill();
+
+  // circle
+  var grad = ctx.createRadialGradient(x, y, 0, x, y, rad);
+  grad.addColorStop(0, colorToRGBA(color, 0.25));
+  grad.addColorStop(1, colorToRGBA(color, 0.05));
+  ctx.fillStyle = grad;
+
+  ctx.beginPath();
+  ctx.arc(x, y, rad * .67, 0, Math.PI * 2, false);
+  ctx.closePath();
+  ctx.fill();
+
+  //diamond
+  var halfRad = rad / 4 * .67;
+  var grad = ctx.createRadialGradient(x, y, 0, x, y, halfRad);
+  grad.addColorStop(0, colorToRGBA(color, 1));
+  grad.addColorStop(1, colorToRGBA(color, 0));
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(x - halfRad, y);
+  ctx.lineTo(x, y - halfRad);
+  ctx.lineTo(x + halfRad, y);
+  ctx.lineTo(x, y + halfRad);
+  ctx.closePath();
+  ctx.fill();
+
+
 }
 
 function updateZoomIndicator() {
@@ -705,6 +790,17 @@ function drawMap(options = {}) {
 
   invTy = function(sy) {
     return (bounds.top - ((sy - offsetY - centerOffsetY) / scaled));
+  }
+
+  for (const starCluster of starClusters) {
+    const x = starCluster.x;
+    const y = starCluster.y;
+    const positions = getProjectedPositions(x, y);
+    for (const position of positions) {
+      const sx = Math.trunc(tx(position.x));
+      const sy = Math.trunc(ty(position.y));
+      drawStarCluster(sx, sy, starCluster);
+    }
   }
 
   const planetList = Object.values(starmapData.planets);
@@ -850,7 +946,7 @@ canvas.addEventListener('mousemove', (e) => {
       const player = starmapData.players.find(p => p.id === ownerId);
       const ownerName = player ? player.name : "Unowned";
       const ownerColor = player ? player.color : "#888";
-      const star = isStarbase(planet.id) ? "⨁" : "";
+      const star = isStarbase(planet.id) ? "⨁ " : "◯ ";
       html += `<div style="margin-top: 4px; color: ${ownerColor};">${star} P${planet.id} ${planet.name} (${ownerName}) [${planet.x},${planet.y}]</div>`;
       tooltip.style.borderLeftColor = ownerColor;
     } else {
@@ -900,6 +996,9 @@ window.addEventListener("resize", () => {
 function initializeMap() {
   // build kdtree for planets
   starmapTree = buildKDTree(starmapData.planets);
+
+  // add any star clusters
+  starClusters.push(...starmapData.starclusters);
 
   // build kdtree for ships for each turn
   for (let turn = 0; turn < shiplistData.shiplist.length; turn++) {
@@ -1101,6 +1200,9 @@ canvas.addEventListener("wheel", (e) => {
 
   const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
   zoom *= zoomFactor;
+
+  // clamp between MIN_ZOOM and MAX_ZOOM
+  zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 
   // Recompute scale & center offsets
   const newScaled = baseScale * zoom;
