@@ -583,10 +583,12 @@ class PlanetsDB(_PlanetsDB):
         self.save_turn(game_id, turn_id, data["rst"])
         return True
 
-    def load_all(self, game_id: GAME_ID):
+    def load_all(self, game_id: GAME_ID, save_file=None):
         """Get a ZIP archive containing all of the turns of a completed game, except the very last turn of a game"""
         req_data = dict(gameid=game_id, apikey=self.account["apikey"])
         res = requests.post("http://api.planets.nu/game/loadall", data=req_data)
+        if save_file:
+            save_file.write(res.content)
         self.save_turns(res.content)
 
     def update(self, force_update=False):

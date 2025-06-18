@@ -39,6 +39,31 @@
       background-color: #8AB2FF; /* primary on hover */
     }
 
+    h1, h2, h3, h4 {
+      font-family: 'Orbitron', sans-serif;
+      letter-spacing: 0.06em;
+      color: #BB9AF7; /* theme primary color */
+      margin-top: 0.7em;
+      margin-bottom: 0.5em;
+      padding-bottom: 0.2em;
+    }
+
+    h1 {
+      font-size: 2em;
+    }
+
+    h2 {
+      font-size: 1.75em;
+    }
+
+    h3 {
+      font-size: 1.5em;
+    }
+
+    h4 {
+      font-size: 1.25em;
+    }
+
     #tooltip {
       position: absolute;
       background: #24283B;
@@ -53,14 +78,6 @@
       z-index: 10;
       max-width: 300px;
       white-space: normal;
-    }
-
-    #mapTitle {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 1.5em;
-      letter-spacing: 0.05em;
-      color: #BB9AF7; /* primary */
-      margin-top: 0.5em;
     }
 
     #mainLayout {
@@ -90,7 +107,7 @@
     #sidebar {
       font-family: sans-serif;
       background-color: #414868;  /* panel */
-      padding: 16px;
+      padding: 8px;
       border-radius: 8px;
       min-width: 250px;
     }
@@ -100,6 +117,7 @@
       border-collapse: collapse;
       background-color: #24283B; /* surface */
       color: #7AA2F7;            /* secondary */
+      border-radius: 6px;
     }
 
     #playerTable th {
@@ -112,7 +130,6 @@
 
     #playerTable td {
       padding: 6px;
-      border-top: 1px solid #1A1B26;
       font-size: 14px;
     }
 
@@ -132,6 +149,63 @@
       font-family: monospace;
       pointer-events: none;
     }
+
+    #bubble {
+      background-color: #414868; /* panel */
+      padding: 8px;
+      margin-bottom: 8px;
+    }
+
+    #playerHeader {
+      color: #BB9AF7; /* primary */
+      margin: 4px;
+      font-size: 1.2em;
+      cursor: pointer;
+    }
+
+    #playerCompressed {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .playerBox {
+      background-color: #24283B;
+      color: #BB9AF7;
+      padding: 4px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: sans-serif;
+      cursor: default;
+    }
+
+    #newsList {
+      font-family: sans-serif;
+      font-size: 12px;
+      color: #E0E0E0;
+      margin-top: 0.5em;
+    }
+
+    .newsBlock {
+      padding-left: 0.3em;
+    }
+
+    #newsList ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    #newsList li {
+      padding: 1px 0;
+      line-height: 1.3em;
+    }
+
+    #newsList li.explosion {
+      padding-left: 0.8em;
+      color: #FFB86C;
+    }
   </style>
 </head>
 <body>
@@ -139,43 +213,74 @@
 <div id="tooltip"></div>
 
 <div id="mainLayout">
-  <div id="canvasWrapper">
-    <canvas id="starmap"></canvas>
-  </div>
-  <div id="zoom-indicator"></div>
-
-  <div id="sidebar">
-    <h3 id="mapTitle">Starmap</h3>
-    <table id="playerTable">
-      <tbody></tbody>
-    </table>
-  </div>
-</div>
-
-<div id="controls">
-  <label for="turnSlider">Turn: <span id="turnLabel">1</span></label>
-  <input type="range" id="turnSlider" min="1" max="1" value="1">
-
-  <button id="rewindButton">⏮️</button>
-  <button id="stepBackButton">⬅️</button>
-  <button id="stepForwardButton">➡️</button>
-  <button id="playPauseButton">▶️</button>
   <div>
-    <button id="zoomInButton">🔍+</button>
-    <button id="zoomOutButton">🔍−</button>
-    <button id="resetViewButton">🔄 Reset</button>
-  </div> 
+    <div id="canvasWrapper">
+      <canvas id="starmap"></canvas>
+    </div>
+    <div id="controls">
+      <label for="turnSlider">Turn: <span id="turnLabel">1</span></label>
+      <input type="range" id="turnSlider" min="1" max="1" value="1">
+
+      <button id="rewindButton">⏮️</button>
+      <button id="stepBackButton">⬅️</button>
+      <button id="stepForwardButton">➡️</button>
+      <button id="playPauseButton">▶️</button>
+      <div>
+        <button id="zoomInButton">🔍+</button>
+        <button id="zoomOutButton">🔍−</button>
+        <button id="resetViewButton">🔄 Reset</button>
+      </div> 
+    </div>
+    <div id="zoom-indicator"></div>
+  </div>
+  <div id="sidebar">
+    <div id="bubble">
+      <h3 id="mapTitle">Starmap</h3>
+    </div>
+    <div id="bubble">
+      <h4 id="playerHeader">Players</h4>
+      <table id="playerTable">
+        <tbody></tbody>
+      </table>
+      <div id="playerCompressed" style="display: none;"></div>
+    </div>
+    <div id="bubble">
+      <h4 id="newsTitle">News</h4>
+      <ul id="XXXnewsList"></ul>
+
+      <div id="newsList">
+        <div class="newsBlock">
+          <ul>
+            <li>S10 LARGE DEEP SPACE FREIGHTER (2) ☠️ vs S75 LOKI CLASS DESTROYER (1)</li>
+            <li>S75 LOKI CLASS DESTROYER (1) vs ◯ P109 Backinfuture (2) ☠️</li>
+            <li class="explosion">💥 LARGE DEEP SPACE FREIGHTER</li>
+          </ul>
+        </div>
+
+        <div class="newsBlock">
+          <ul>
+            <li>S68 IFL U Can't Touch This (5) ☠️ vs S65 DWARFSTAR CLASS TRANSPORT (6)</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
 </div>
+
+
 
 <script>
 
 Promise.all([
   fetch('starmap.json').then(res => res.json()),
-  fetch('shiplist.json').then(res => res.json())
+  fetch('shiplist.json').then(res => res.json()),
+  fetch('messagelist.json').then(res => res.json())
 ])
-  .then(([starmapData, shiplistData]) => {
+  .then(([starmapData, shiplistData, messagelistData]) => {
     window.starmapData = starmapData;
     window.shiplistData = shiplistData;
+    window.messagelistData = messagelistData;
     initializeMap();
   })
   .catch(err => {
@@ -187,6 +292,7 @@ const ctx = canvas.getContext('2d');
 const tooltip = document.getElementById('tooltip');
 let starmapTree = null;
 const shipTrees = {};
+const newsTrees = {};
 let screenPlanets = [];
 
 let maxTurn = 1;
@@ -400,6 +506,7 @@ function updateTurn(turnId) {
   starbaseSet = new Set(starmapData.starbases[currentTurnId - 1] || []);
   document.getElementById("turnLabel").textContent = turnId;
   drawMap();
+  updateNewsPanel(turnId);
 }
 
 function scaleRadius(base, zoom, min = 2) {
@@ -519,6 +626,20 @@ function getProjectedPositions(x, y) {
   }));
 }
 
+function deproject(mapX, mapY) {
+  const w = starmapData.width + 20;
+  const h = starmapData.height + 20;
+
+  const dx = Math.trunc(mapX / w) - 1; // center tile is at (w, h)
+  const dy = Math.trunc(mapY / h) - 1;
+  console.log(`deproject: mapX, mapY: ${mapX},${mapY}, dx,dy: ${dx},${dy} -> ${mapX - dx * w},${mapY - dy * h}`)
+
+  return {
+    x: mapX - dx * w,
+    y: mapY - dy * h
+  };
+}
+
 function interpolate(a, b, t) {
   return a + (b - a) * t;
 }
@@ -547,6 +668,7 @@ function drawMap(options = {}) {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   screenPlanets = [];
+
 
   const mapwidth = starmapData.width;
   const magicPadding = 20;
@@ -729,7 +851,7 @@ canvas.addEventListener('mousemove', (e) => {
       const ownerName = player ? player.name : "Unowned";
       const ownerColor = player ? player.color : "#888";
       const star = isStarbase(planet.id) ? "⨁" : "";
-      html += `<div style="margin-top: 4px; color: ${ownerColor};">${star} P${planet.id} ${planet.name} (${ownerName})</div>`;
+      html += `<div style="margin-top: 4px; color: ${ownerColor};">${star} P${planet.id} ${planet.name} (${ownerName}) [${planet.x},${planet.y}]</div>`;
       tooltip.style.borderLeftColor = ownerColor;
     } else {
       tooltip.style.borderLeftColor = "#666";
@@ -778,9 +900,16 @@ window.addEventListener("resize", () => {
 function initializeMap() {
   // build kdtree for planets
   starmapTree = buildKDTree(starmapData.planets);
+
   // build kdtree for ships for each turn
   for (let turn = 0; turn < shiplistData.shiplist.length; turn++) {
     shipTrees[turn] = buildKDTree(getShipsForTurn(turn));
+  }
+
+  // build kdtree for news for each turn
+  const news = newsreader.parse(messagelistData.messagelist);
+  for (let turn = 0; turn < news.length; turn++) {
+    newsTrees[turn] = buildKDTree(news[turn]);
   }
 
   document.getElementById("pageTitle").textContent = starmapData.title || "Starmap";
@@ -797,6 +926,18 @@ function initializeMap() {
     tableBody.appendChild(row);
   }
 
+  const compressedContainer = document.getElementById('playerCompressed');
+  compressedContainer.innerHTML = '';
+  for (const player of starmapData.players) {
+    const box = document.createElement('div');
+    box.className = 'playerBox';
+    const secondWord = player.race.split(' ')[1] || player.race;
+    box.textContent = secondWord.slice(0, 2);
+    box.title = player.name;
+    box.style.borderLeft = `6px solid ${player.color}`;
+    compressedContainer.appendChild(box);
+  }
+
   tableBody.addEventListener('input', (e) => {
     if (e.target.type === 'color') {
       const playerId = parseInt(e.target.dataset.player, 10);
@@ -806,6 +947,15 @@ function initializeMap() {
         drawMap();
       }
     }
+  });
+
+  document.getElementById('playerHeader').addEventListener('click', () => {
+    const table = document.getElementById('playerTable');
+    const compressed = document.getElementById('playerCompressed');
+    const isTableVisible = table.style.display !== 'none';
+
+    table.style.display = isTableVisible ? 'none' : '';
+    compressed.style.display = isTableVisible ? '' : 'none';
   });
 
   const slider = document.getElementById("turnSlider");
@@ -966,6 +1116,130 @@ canvas.addEventListener("wheel", (e) => {
 
   drawMap();
 }, { passive: false }); // notify browser that native scrolling will be disabled
+
+function centerMapOn(x, y) {
+  const screenCenterX = canvas.width / 2;
+  const screenCenterY = canvas.height / 2;
+  const scaled = baseScale * zoom;
+
+  offsetX = screenCenterX - (x - bounds.left) * scaled - centerOffsetX;
+  offsetY = screenCenterY - (bounds.top - y) * scaled - centerOffsetY;
+
+  drawMap();
+}
+
+canvas.addEventListener("dblclick", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  const { x, y } = deproject(invTx(mx), invTy(my));
+  centerMapOn(x, y);
+});
+
+const newsreader = {
+  BATTLE: 100,
+  EXPLOSION: 101,
+
+  parse: function(newsRecords) {
+    const result = [];
+
+    for (const entry of newsRecords) {
+      const turnResult = [];
+
+      for (const key in entry) {
+        const [x, y] = key.split(',').map(Number);
+        const messages = entry[key];
+        const newsItems = [];
+
+        for (const record of messages) {
+          const [type, ...rest] = record;
+
+          if (type === this.BATTLE) {
+            const [btype, leftId, rightId, leftName, rightName, leftOwner, rightOwner, leftSurvives, rightSurvives] = rest;
+            newsItems.push({
+              type: 'BATTLE',
+              btype,
+              leftId, rightId,
+              leftName, rightName,
+              leftOwner, rightOwner,
+              leftSurvives, rightSurvives
+            });
+          } else if (type === this.EXPLOSION) {
+            const [name] = rest;
+            newsItems.push({
+              type: 'EXPLOSION',
+              name
+            });
+          } else {
+            console.warn("Unknown news type:", type);
+          }
+        }
+
+        turnResult.push({ x, y, news: newsItems });
+      }
+
+      result.push(turnResult);
+    }
+
+    return result;
+  }
+};
+
+function formatNewsItem(newsItem) {
+  const li = document.createElement("li");
+
+  if (newsItem.type === "BATTLE") {
+    const l = newsItem.leftSurvives ? "" : "❌";
+    const r = newsItem.rightSurvives ? "" : "❌";
+    const p = newsItem.btype === 0 ? "S" : newsItem.btype === 1 ? "◯ P" : "⨁ P";
+
+    const leftColor = getColor(newsItem.leftOwner);
+    const rightColor = getColor(newsItem.rightOwner);
+
+    li.innerHTML = `
+      <span style="color: ${leftColor}">S${newsItem.leftId} ${newsItem.leftName} (${newsItem.leftOwner}) ${l}</span>
+      <span> vs </span>
+      <span style="color: ${rightColor}">${p}${newsItem.rightId} ${newsItem.rightName} (${newsItem.rightOwner}) ${r}</span>
+    `;
+
+  } else if (newsItem.type === "EXPLOSION") {
+    li.classList.add("explosion");
+    li.textContent = `💥 ${newsItem.name}`;
+  } else {
+    li.textContent = "Unknown news type";
+  }
+
+  return li;
+}
+
+function updateNewsPanel(turnId) {
+  const list = document.getElementById("newsList");
+  list.innerHTML = ""; // Clear previous entries
+
+  const center = {
+    x: invTx(canvas.width / 2),
+    y: invTy(canvas.height / 2)
+  };
+
+  const visibleNews = rangeKD(newsTrees[turnId - 1], center, 1e12).map(r => r.point);
+
+  for (const item of visibleNews) {
+    const ul = document.createElement("ul");
+    ul.classList.add("newsBlock");
+    // Attach recenter handler to the whole block
+    ul.addEventListener("click", () => {
+      centerMapOn(item.x, item.y);
+    });
+
+    for (const newsItem of item.news) {
+      const li = formatNewsItem(newsItem);
+      ul.appendChild(li);
+    }
+
+    list.appendChild(ul);
+  }
+}
 
 </script>
 

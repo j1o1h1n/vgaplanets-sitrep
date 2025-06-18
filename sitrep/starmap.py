@@ -230,12 +230,14 @@ def build_shiplist(game: vgap.Game) -> dict[str,Any]:
     for player in players:
         player_id = player.player_id
         turns = game.turns(player_id)
+        prev_alive = set()
         for turn in turns.values():
             if hulls is None:
                 hulls = {h['id']:h for h in turn.data["hulls"]}
             if turn.turn_id not in turninfo:
                 turninfo[turn.turn_id] = {}
             ships = turn.ships(player_id)
+            alive = set()
             for ship in ships:
                 shipid = ship['id']
                 shipdesc = build_ship_desc(ship, hulls)
@@ -248,13 +250,16 @@ def build_shiplist(game: vgap.Game) -> dict[str,Any]:
                 rec = {"id": shipid, "name": ship["name"], "shipdesc": shipdesc_id, "ownerid": player_id}
                 
                 prev_id_uid = shipid_to_uid.get(shipid, None)
-                if prev_id_uid is None or not match_ship(shipinfo[prev_id_uid], rec):
+                if prev_id_uid is None \
+                   or prev_id_uid not in prev_alive \
+                   or not match_ship(shipinfo[prev_id_uid], rec):
                     # new uid
                     uid = next_uid
                     next_uid += 1
                     shipid_to_uid[shipid] = uid
                     shipinfo[uid] = rec
                 uid = shipid_to_uid[shipid]
+                alive.add(uid)
 
                 # update name so last name is used
                 shipinfo[uid]["name"] = ship["name"]
@@ -263,6 +268,7 @@ def build_shiplist(game: vgap.Game) -> dict[str,Any]:
                 if loc not in turninfo[turn.turn_id]:
                     turninfo[turn.turn_id][loc] = []
                 turninfo[turn.turn_id][loc].extend([uid, ammo])
+            prev_alive = alive
 
     shiplist = []
     for i in range(max(turninfo.keys())):
@@ -299,3 +305,114 @@ def write_shiplist(game: vgap.Game, output_path: str):
     with open(output_path, 'w') as f:
         f.write(output)
 
+
+# message types
+BATTLE, EXPLOSION = 100, 101
+
+
+def build_messages_for_turn(game, turn_id):
+    turns = {player.player_id:game.turns(player.player_id).get(turn_id, None) for player in game.players.values()}
+
+    pat = re.compile(r'Distress call and explosion detected at \( \d+, \d+ \) the name of the ship was: (.*)')
+
+    exp_msgs = {}
+    for turn in turns.values():
+        if turn is None:
+            continue
+        msgs = (m for m in turn.data['messages'] if m['messagetype'] in {10})
+        locs = {}
+        for m in msgs:
+            loc = m['x'], m['y']
+            mo = pat.match(m['body'])
+            if not mo:
+                continue
+            name = f"{mo.group(1)}"
+            if loc not in locs:
+                locs[loc] = []
+            locs[loc].append(name)
+        exp_msgs.update(locs)
+
+    vcr_map = {}
+    for turn in turns.values():
+        if turn is None:
+            continue
+        for vcr in turn.data['vcrs']:
+            vcr_map[vcr['id']] = vcr
+
+    vcrs = list(vcr_map.values())
+    vcrs.sort(key = lambda vcr: (vcr['x'], vcr['y'], vcr['id']))
+    vcrs_by_loc = {}
+    for vcr in vcrs:
+        loc = vcr['x'], vcr['y']
+        if loc not in vcrs_by_loc:
+            vcrs_by_loc[loc] = []
+        vcrs_by_loc[loc].append(vcr)
+
+    def match_ship(ship_id, owner_id, vcr):
+        " True if the ship matches the details of a combattent in the vcr "
+        def sided_match(side):
+            " True if the ship matches the details of a side-combattent in the vcr "
+            if side == 'right' and vcr['battletype']:
+                # ship can't be a planet
+                return False
+            # match owner and ship_id
+            return (vcr[f'{side}ownerid'] == owner_id) and (vcr[side]['objectid'] == ship_id)
+
+        return sided_match('left') or sided_match('right')
+
+    messages = {}
+    for loc in vcrs_by_loc:
+        key = f"{loc[0]},{loc[1]}"
+        messages[key] = []
+        loc_vcrs = vcrs_by_loc[loc]
+        for idx in range(len(loc_vcrs)):
+            vcr = loc_vcrs[idx]
+            next_vcr = loc_vcrs[idx+1] if idx + 1 < len(loc_vcrs) else None
+            left_owner_id, right_owner_id = vcr['leftownerid'], vcr['rightownerid']
+            left_id, right_id = vcr['left']['objectid'], vcr['right']['objectid']
+            left_name, right_name = vcr['left']['name'], vcr['right']['name']
+            battle_type = vcr['battletype'] # 1 => rhs is planet
+            
+            if next_vcr:
+                left_survives = match_ship(left_id, left_owner_id, next_vcr)
+            else:
+                left_survives = vgap.query_one(turns[left_owner_id].ships(left_owner_id), lambda ship: ship["id"] == left_id) is not None
+            if battle_type:
+                right_survives = vgap.query_one(turns[right_owner_id].planets(right_owner_id), lambda planet: planet["id"] == right_id) is not None
+            elif next_vcr:
+                right_survives = match_ship(right_id, right_owner_id, next_vcr)
+            else:
+                right_survives = vgap.query_one(turns[right_owner_id].ships(right_owner_id), lambda ship: ship["id"] == right_id) is not None
+
+            btype = 2 if vcr["right"]["hasstarbase"] else 1 if battle_type else 0
+            planet_lost = btype and vgap.query_one(turns[right_owner_id].planets(right_owner_id), lambda planet: planet["id"] == right_id) is None
+            battle_rec = [BATTLE, btype, left_id, right_id, left_name, right_name, left_owner_id, right_owner_id, left_survives, right_survives]
+            messages[key].append(battle_rec)
+
+        for name in exp_msgs.get(loc, []):
+            exp_rec = [EXPLOSION, name]
+            messages[key].append(exp_rec)
+
+    return messages
+
+
+def build_messages(game):
+    maxturn = max(game.turns().keys())
+    messages = []
+    for turn_id in range(1, maxturn):
+        messages.append(build_messages_for_turn(game, turn_id))
+    return messages
+
+def write_messagelist(game: vgap.Game, output_path: str):
+    messages = build_messages(game)
+    messages_data = ",\n".join(f'    {json.dumps(m)}' for m in messages)
+
+    output = f"""{{
+  "messagelist": [
+{messages_data}
+  ]
+}}
+"""
+
+    with open(output_path, 'w') as f:
+        f.write(output)
