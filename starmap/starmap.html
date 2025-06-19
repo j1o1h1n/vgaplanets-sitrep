@@ -306,6 +306,7 @@ let starmapTree = null;
 const shipTrees = {};
 const newsTrees = {};
 const starClusters = [];
+const nebulas = [];
 
 let screenPlanets = [];
 
@@ -328,7 +329,7 @@ let starbaseSet = new Set();
 
 /* zoom and pan */
 const MIN_ZOOM = 0.1;
-const MAX_ZOOM = 10.0;
+const MAX_ZOOM = 40.0;
 
 let zoom = 1.5;
 let mapWidth = 0;
@@ -524,7 +525,7 @@ function updateTurn(turnId) {
 }
 
 function scaleRadius(base, zoom, min = 2) {
-  max = base * 3;
+  max = base * 10;
   return Math.max(min, Math.min(max, base * zoom));
 }
 
@@ -632,6 +633,24 @@ function drawTriangle(x, y, size, color) {
   ctx.stroke();
 }
 
+function drawNebula(x, y, neb, ctx) {
+  var rad = neb.radius * zoom;
+  var green = 200 + (neb.gas * 10);
+  var blue = 200 - (neb.gas * 10);
+  var edge = 0;
+
+  var grad = ctx.createRadialGradient(x, y, 0, x, y, rad);
+  grad.addColorStop(0, "rgba(0, " + green + ", " + blue + ", " + neb.intensity / 400 + ")");
+  
+  grad.addColorStop(1, "rgba(0, " + green + ", " + blue + ", " + edge + ")");
+  ctx.fillStyle = grad;
+
+  ctx.beginPath();
+  ctx.arc(x, y, rad, 0, Math.PI * 2, false);
+  ctx.closePath();
+  ctx.fill();
+}
+
 function drawStarCluster(x, y, star) {
   var rad = star.radius * zoom;
 
@@ -684,8 +703,6 @@ function drawStarCluster(x, y, star) {
   ctx.lineTo(x, y + halfRad);
   ctx.closePath();
   ctx.fill();
-
-
 }
 
 function updateZoomIndicator() {
@@ -744,6 +761,37 @@ function interpolateWrapped(a, b, range, t) {
   return a + (b - a) * t;
 }
 
+function drawGrid() {
+  if (zoom > 30) {
+    ctx.strokeStyle = 'rgba(241,241,255,0.1)';
+  } else if (zoom > 20) {
+    ctx.strokeStyle = 'rgba(241,241,255,0.07)';
+  } else {
+    ctx.strokeStyle = 'rgba(241,241,241,0.05)';
+  }
+  ctx.lineWidth = 1;
+  const gridSize = 1;      // world‐space spacing
+  const dx = 0.5;
+  const dy = 0.5;
+  // vertical lines
+  for (let x = Math.ceil(bounds.left / gridSize) * gridSize; x <= bounds.right; x += gridSize) {
+    const sx = tx(x + dx);
+    ctx.beginPath();
+    ctx.moveTo(sx, 0);
+    ctx.lineTo(sx, canvas.height);
+    ctx.stroke();
+  }
+
+  // horizontal lines
+  for (let y = Math.ceil(bounds.bottom / gridSize) * gridSize; y <= bounds.top; y += gridSize) {
+    const sy = ty(y + dy);
+    ctx.beginPath();
+    ctx.moveTo(0, sy);
+    ctx.lineTo(canvas.width, sy);
+    ctx.stroke();
+  }
+}
+
 function drawMap(options = {}) {
   const {
     turn = currentTurnId,
@@ -753,7 +801,6 @@ function drawMap(options = {}) {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   screenPlanets = [];
-
 
   const mapwidth = starmapData.width;
   const magicPadding = 20;
@@ -801,6 +848,21 @@ function drawMap(options = {}) {
       const sy = Math.trunc(ty(position.y));
       drawStarCluster(sx, sy, starCluster);
     }
+  }
+
+  for (const nebula of nebulas) {
+    const x = nebula.x;
+    const y = nebula.y;
+    const positions = getProjectedPositions(x, y);
+    for (const position of positions) {
+      const sx = Math.trunc(tx(position.x));
+      const sy = Math.trunc(ty(position.y));
+      drawNebula(sx, sy, nebula, ctx);
+    }
+  }
+
+  if (zoom > 15.0) {
+    drawGrid();
   }
 
   const planetList = Object.values(starmapData.planets);
@@ -891,6 +953,21 @@ function drawMap(options = {}) {
     }
   }
 
+  const visibleNews = getVisibleNews(currentTurnId);
+  // draw explosions on the map
+  const explosionSz = Math.round(Math.min(60, Math.max(6, 10 * zoom)));
+  ctx.font          = `${explosionSz}px sans-serif`;
+  ctx.textAlign     = 'center';
+  ctx.textBaseline  = 'middle';
+  ctx.globalAlpha = 1.0 - t;
+  for (const item of visibleNews) {
+    const hasExplosion = item.news.some(n => n.type === 'EXPLOSION');
+    if (!hasExplosion) continue;
+    const sx = tx(item.x + 0.8), sy = ty(item.y - 0.8);
+    ctx.fillText('💥', sx, sy);
+  }
+  ctx.globalAlpha = 1.0;
+
   const borderLeft   = tx(bounds.left + magicPadding);
   const borderBottom = ty(bounds.bottom + magicPadding);
   const borderRight  = tx(bounds.right + magicPadding);
@@ -937,7 +1014,7 @@ canvas.addEventListener('mousemove', (e) => {
       const color = player ? player.color : "#888";
       const desc = ship.desc;
       const ammoText = ship.bv > 0 ? `/${ship.ammo}` : "";
-      html += `<div style="color: ${color};"> ❯ S${ship.id} ${ship.name} - ${desc}${ammoText} [${ship.uid}]</div>`;
+      html += `<div style="color: ${color};"> ❯ S${ship.id} ${ship.name} - ${desc}${ammoText}</div>`;
     }
 
     // Planet
@@ -947,11 +1024,12 @@ canvas.addEventListener('mousemove', (e) => {
       const ownerName = player ? player.name : "Unowned";
       const ownerColor = player ? player.color : "#888";
       const star = isStarbase(planet.id) ? "⨁ " : "◯ ";
-      html += `<div style="margin-top: 4px; color: ${ownerColor};">${star} P${planet.id} ${planet.name} (${ownerName}) [${planet.x},${planet.y}]</div>`;
+      html += `<div style="margin-top: 4px; color: ${ownerColor};">${star} P${planet.id} ${planet.name} (${ownerName})]</div>`;
       tooltip.style.borderLeftColor = ownerColor;
     } else {
       tooltip.style.borderLeftColor = "#666";
     }
+    html += `<div style="text-align:right; font-size:0.8em;">${Math.round(mapX)},${Math.round(mapY)}</div>`;
 
     tooltip.innerHTML = html;
     tooltip.style.left = `${e.pageX + 10}px`;
@@ -999,6 +1077,9 @@ function initializeMap() {
 
   // add any star clusters
   starClusters.push(...starmapData.starclusters);
+
+  // add any nebulas
+  nebulas.push(...starmapData.nebulas);
 
   // build kdtree for ships for each turn
   for (let turn = 0; turn < shiplistData.shiplist.length; turn++) {
@@ -1085,11 +1166,17 @@ function initializeMap() {
 
   document.getElementById("zoomInButton").addEventListener("click", () => {
     zoom *= 1.25;
+    // clamp between MIN_ZOOM and MAX_ZOOM
+    zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+    updateNewsPanel(currentTurnId);
     drawMap();
   });
 
   document.getElementById("zoomOutButton").addEventListener("click", () => {
     zoom /= 1.25;
+    // clamp between MIN_ZOOM and MAX_ZOOM
+    zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+    updateNewsPanel(currentTurnId);
     drawMap();
   });
 
@@ -1097,6 +1184,7 @@ function initializeMap() {
     zoom = 1.0;
     offsetX = 0;
     offsetY = 0;
+    updateNewsPanel(currentTurnId);
     drawMap();
   });
 
@@ -1183,6 +1271,7 @@ canvas.addEventListener("mousemove", (e) => {
     dragStart = { x: e.clientX, y: e.clientY };
     offsetX += dx;
     offsetY += dy;
+    updateNewsPanel(currentTurnId);
     drawMap();
   }
 });
@@ -1216,6 +1305,7 @@ canvas.addEventListener("wheel", (e) => {
   centerOffsetX = newCenterOffsetX;
   centerOffsetY = newCenterOffsetY;
 
+  updateNewsPanel(currentTurnId);
   drawMap();
 }, { passive: false }); // notify browser that native scrolling will be disabled
 
@@ -1227,6 +1317,7 @@ function centerMapOn(x, y) {
   offsetX = screenCenterX - (x - bounds.left) * scaled - centerOffsetX;
   offsetY = screenCenterY - (bounds.top - y) * scaled - centerOffsetY;
 
+  updateNewsPanel(currentTurnId);
   drawMap();
 }
 
@@ -1315,16 +1406,29 @@ function formatNewsItem(newsItem) {
   return li;
 }
 
-function updateNewsPanel(turnId) {
-  const list = document.getElementById("newsList");
-  list.innerHTML = ""; // Clear previous entries
-
+function getVisibleNews(turnId) {
   const center = {
     x: invTx(canvas.width / 2),
     y: invTy(canvas.height / 2)
   };
 
-  const visibleNews = rangeKD(newsTrees[turnId - 1], center, 1e12).map(r => r.point);
+  // Compute the pixel‐space radius of the viewable rectangle
+  const r_px = Math.hypot(canvas.width, canvas.height) / 2;
+
+  // Convert to world units using your current scale
+  const scale = baseScale * zoom;
+  const r_world = r_px / scale;
+
+  const visibleNews = rangeKD(newsTrees[turnId - 1], center, r_world * r_world).map(r => r.point);
+  return visibleNews;
+}
+
+
+function updateNewsPanel(turnId) {
+  const list = document.getElementById("newsList");
+  list.innerHTML = ""; // Clear previous entries
+
+  const visibleNews = getVisibleNews(turnId);
 
   for (const item of visibleNews) {
     const ul = document.createElement("ul");

@@ -170,7 +170,11 @@ def build_starmap(game: vgap.Game) -> dict:
     # starclusters
     starclusters = game.turns()[1].data["stars"]
 
-    return {"planets": planets, "starclusters": starclusters, "planet_owners": planet_owners, "starbases": starbases, "turns": max(turninfo.keys())}
+    # nebulas
+    nebulas = game.turns()[1].data["nebulas"]
+
+    return {"planets": planets, "starclusters": starclusters, "nebulas": nebulas,
+            "planet_owners": planet_owners, "starbases": starbases, "turns": max(turninfo.keys())}
 
 
 def write_starmap(game: vgap.Game, output_path: str):
@@ -189,6 +193,7 @@ def write_starmap(game: vgap.Game, output_path: str):
     players_data = ",\n".join(["    " + json.dumps(val) for val in players])
     planets_data = ",\n".join(["    " + json.dumps(val) for val in data["planets"].values()])
     starclusters_data = ",\n".join(["    " + json.dumps(val) for val in data["starclusters"]])
+    nebula_data = ",\n".join(["    " + json.dumps(val) for val in data["nebulas"]])
     planet_owners_data = ",\n".join(["    " + json.dumps(val) for val in data["planet_owners"]])
     starbases_data = ",\n".join(["    " + json.dumps(val) for val in data["starbases"]])
 
@@ -207,6 +212,9 @@ def write_starmap(game: vgap.Game, output_path: str):
   ],
   "starclusters": [
 {starclusters_data}
+  ],
+  "nebulas": [
+{nebula_data}
   ],
   "planet_owners": [
 {planet_owners_data}
