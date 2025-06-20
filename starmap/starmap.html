@@ -217,22 +217,21 @@ h4 { font-size: 1.25rem; }
   color: #E0E0E0;
   margin-top: 0.5em;
 }
-.newsBlock {
-  padding-left: 0.3em;
-}
 #newsList ul {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0.3em 0.1em 0.5em 0.1em;
+  border-top: 1px solid #8882;
 }
 #newsList li {
-  padding: 1px 0;
+  padding:  0.1em 0.0em 0.1em 0.0em;
   line-height: 1.3em;
 }
 #newsList li.explosion {
-  padding-left: 0.8em;
   color: var(--color-explosion);
+  padding: 0.1em 0.0em 0.1em 0.8em;
 }
+
 
   </style>
 </head>
@@ -1359,10 +1358,11 @@ const newsreader = {
               leftSurvives, rightSurvives
             });
           } else if (type === this.EXPLOSION) {
-            const [name] = rest;
+            const [name, ownerId] = rest;
             newsItems.push({
               type: 'EXPLOSION',
-              name
+              name,
+              ownerId
             });
           } else {
             console.warn("Unknown news type:", type);
@@ -1397,8 +1397,9 @@ function formatNewsItem(newsItem) {
     `;
 
   } else if (newsItem.type === "EXPLOSION") {
+    const color = getColor(newsItem.ownerId);
     li.classList.add("explosion");
-    li.textContent = `💥 ${newsItem.name}`;
+    li.innerHTML = `<span style="color: ${color}">💥 ${newsItem.name} (${newsItem.ownerId})</span>`;
   } else {
     li.textContent = "Unknown news type";
   }
@@ -1432,7 +1433,6 @@ function updateNewsPanel(turnId) {
 
   for (const item of visibleNews) {
     const ul = document.createElement("ul");
-    ul.classList.add("newsBlock");
     // Attach recenter handler to the whole block
     ul.addEventListener("click", () => {
       centerMapOn(item.x, item.y);

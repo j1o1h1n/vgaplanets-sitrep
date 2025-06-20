@@ -378,9 +378,9 @@ def build_messages_for_turn(game, turn_id):
         vcrs_by_loc[loc].append(vcr)
 
     def match_ship(ship_id, owner_id, vcr):
-        " True if the ship matches the details of a combattent in the vcr "
+        " True if the ship matches the details of a combatant in the vcr "
         def sided_match(side):
-            " True if the ship matches the details of a side-combattent in the vcr "
+            " True if the ship matches the details of a side-combatant in the vcr "
             if side == 'right' and vcr['battletype']:
                 # ship can't be a planet
                 return False
@@ -390,6 +390,7 @@ def build_messages_for_turn(game, turn_id):
         return sided_match('left') or sided_match('right')
 
     messages = {}
+    expected = []
     for loc in vcrs_by_loc:
         key = f"{loc[0]},{loc[1]}"
         messages[key] = []
@@ -413,13 +414,23 @@ def build_messages_for_turn(game, turn_id):
             else:
                 right_survives = vgap.query_one(turns[right_owner_id].ships(right_owner_id), lambda ship: ship["id"] == right_id) is not None
 
+            if not left_survives:
+                expected.append((left_name, left_owner_id))
+            if not right_survives:
+                expected.append((right_name, right_owner_id))
+
             btype = 2 if vcr["right"]["hasstarbase"] else 1 if battle_type else 0
             planet_lost = btype and vgap.query_one(turns[right_owner_id].planets(right_owner_id), lambda planet: planet["id"] == right_id) is None
             battle_rec = [BATTLE, btype, left_id, right_id, left_name, right_name, left_owner_id, right_owner_id, left_survives, right_survives]
             messages[key].append(battle_rec)
 
         for name in exp_msgs.get(loc, []):
-            exp_rec = [EXPLOSION, name]
+            owner_id = 0
+            for i in range(len(expected)):
+                if expected[i][0] == name:
+                    _, owner_id = expected.pop(i)
+                    break
+            exp_rec = [EXPLOSION, name, owner_id]
             messages[key].append(exp_rec)
 
     return messages
