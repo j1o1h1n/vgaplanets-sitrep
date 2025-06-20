@@ -232,7 +232,6 @@ h4 { font-size: 1.25rem; }
   padding: 0.1em 0.0em 0.1em 0.8em;
 }
 
-
   </style>
 </head>
 <body>
@@ -241,8 +240,22 @@ h4 { font-size: 1.25rem; }
 
 <div id="mainLayout">
   <div>
-    <div id="canvasWrapper">
-      <canvas id="starmap"></canvas>
+    <div id="canvasWrapper" style="position:relative; display:inline-block;">
+      <canvas id="starmap" …></canvas>
+      <div id="infoBox" style="
+        position:absolute;
+        top:8px;
+        right:20px;
+        background:rgba(22,22,22,0.8);
+        color:#ccc;
+        padding:4px 6px;
+        border-radius:3px;
+        font-size:0.8em;
+        pointer-events:none;
+        border: 1px ridge #666;
+        ">
+        <div class="content">Deep Space <br> x: 0, y: 0</div>
+      </div>
     </div>
     <div id="controls">
       <label for="turnSlider">Turn: <span id="turnLabel">1</span></label>
@@ -307,8 +320,6 @@ const newsTrees = {};
 const starClusters = [];
 const nebulas = [];
 
-let screenPlanets = [];
-
 let maxTurn = 1;
 let currentTurnId = 1;
 
@@ -325,6 +336,7 @@ const animationSettings = {
 
 let planetOwner = {};
 let starbaseSet = new Set();
+let infoBoxPoint = {x: 0, y: 0};
 
 /* zoom and pan */
 const MIN_ZOOM = 0.1;
@@ -521,6 +533,7 @@ function updateTurn(turnId) {
   document.getElementById("turnLabel").textContent = turnId;
   drawMap();
   updateNewsPanel(turnId);
+  updateInfoBox(turnId)
 }
 
 function scaleRadius(base, zoom, min = 2) {
@@ -799,7 +812,6 @@ function drawMap(options = {}) {
   } = options;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  screenPlanets = [];
 
   const mapwidth = starmapData.width;
   const magicPadding = 20;
@@ -880,7 +892,6 @@ function drawMap(options = {}) {
       if (isStarbase(planet.id)) {
         drawCross(sx, sy, scaleRadius(5, zoom), color);
       }
-      screenPlanets.push({ id: planet.id, name: planet.name, x: sx, y: sy, trueX: position.x, trueY: position.y });
     }
   }
 
@@ -1275,6 +1286,18 @@ canvas.addEventListener("mousemove", (e) => {
   }
 });
 
+
+// update infoBoxPoint on click
+canvas.addEventListener('click', e => {
+  const r    = canvas.getBoundingClientRect();
+  const mapX = Math.round(invTx(e.clientX - r.left));
+  const mapY = Math.round(invTy(e.clientY - r.top));
+  infoBoxPoint.x = mapX;
+  infoBoxPoint.y = mapY;
+
+  updateInfoBox(currentTurnId);
+});
+
 canvas.addEventListener("wheel", (e) => {
   event.preventDefault(); // prevent page scroll
 
@@ -1445,6 +1468,41 @@ function updateNewsPanel(turnId) {
 
     list.appendChild(ul);
   }
+}
+
+function updateInfoBox(turnId) {
+  const infoBox      = document.getElementById('infoBox');
+  const infoBoxContent = infoBox.querySelector('.content');
+  const planet = nearestKD(starmapTree, infoBoxPoint, 2).point;
+  const shipMatches = closestGrouped(rangeKD(shipTrees[turnId], infoBoxPoint, 2));
+
+  let html = "";
+  if (planet || shipMatches.length > 0) {
+    // Ships
+    shipMatches.sort((a, b) => a.point.sv - b.point.sv);
+    for (const match of shipMatches) {
+      const ship = match.point;
+      const player = starmapData.players.find(p => p.id === ship.ownerid);
+      const color = player ? player.color : "#888";
+      const desc = ship.desc;
+      const ammoText = ship.bv > 0 ? `/${ship.ammo}` : "";
+      html += `<div style="color: ${color};"> ❯ S${ship.id} ${ship.name} - ${desc}${ammoText}</div>`;
+    }
+
+    // Planet
+    if (planet) {
+      const ownerId = planetOwner[planet.id] || 0;
+      const player = starmapData.players.find(p => p.id === ownerId);
+      const ownerName = player ? player.name : "Unowned";
+      const ownerColor = player ? player.color : "#888";
+      const star = isStarbase(planet.id) ? "⨁ " : "◯ ";
+      html += `<div style="margin-top: 4px; color: ${ownerColor};">${star} P${planet.id} ${planet.name} (${ownerName})</div>`;
+    }
+    html += `<br>x: ${infoBoxPoint.x}, y: ${infoBoxPoint.y}`;
+  } else {
+    html = `Deep Space <br>x: ${infoBoxPoint.x}, y: ${infoBoxPoint.y}`;
+  }
+  infoBoxContent.innerHTML = html;
 }
 
 </script>
