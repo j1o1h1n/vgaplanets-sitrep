@@ -276,6 +276,7 @@ h4 { font-size: 1.25rem; }
   <div id="sidebar">
     <div id="bubble">
       <h3 id="mapTitle">Starmap</h3>
+      <a id="mapTitleLink" href="#">at planets.nu</a>
     </div>
     <div id="bubble">
       <h4 id="playerHeader">Players</h4>
@@ -1102,9 +1103,16 @@ function initializeMap() {
     newsTrees[turn] = buildKDTree(news[turn]);
   }
 
-  document.getElementById("pageTitle").textContent = starmapData.title || "Starmap";
-  document.getElementById("mapTitle").textContent = starmapData.title || "Starmap";
+  // page title
+  const title = starmapData.title || "Starmap";
+  document.getElementById("pageTitle").textContent = title;
+  document.getElementById("mapTitle").textContent = title;
 
+  // link to game on planets nu
+  const link = document.getElementById("mapTitleLink");
+  link.textContent = `game ${starmapData.gameid} @ planets.nu`
+  link.href = `https://planets.nu/#/sector/${starmapData.gameid}`
+  
   const tableBody = document.querySelector('#playerTable tbody');
   for (const player of starmapData.players) {
     const row = document.createElement('tr');

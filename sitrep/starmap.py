@@ -198,6 +198,7 @@ def write_starmap(game: vgap.Game, output_path: str):
     starbases_data = ",\n".join(["    " + json.dumps(val) for val in data["starbases"]])
 
     output = f"""{{
+  "gameid": {game.game_id},
   "title": {json.dumps(game.name)},
   "width": {mapwidth},
   "height": {mapheight},
@@ -443,7 +444,8 @@ def build_messages(game):
         messages.append(build_messages_for_turn(game, turn_id))
     return messages
 
-def write_messagelist(game: vgap.Game, output_path: str):
+
+def write_messagelist(game: vgap.Game, output_path: str) -> None:
     messages = build_messages(game)
     messages_data = ",\n".join(f'    {json.dumps(m)}' for m in messages)
 
@@ -453,6 +455,5 @@ def write_messagelist(game: vgap.Game, output_path: str):
   ]
 }}
 """
-
     with open(output_path, 'w') as f:
         f.write(output)
