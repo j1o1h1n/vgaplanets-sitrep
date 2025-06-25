@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Planet Stats Display</title>
+  <style>
+    :root {
+      /* Colours */
+      --color-bg:        #1A1B26;
+      --color-secondary: #7AA2F7;
+      --color-primary:   #BB9AF7;
+      --color-panel:     #414868;
+      --color-surface:   #24283B;
+      --color-hover:     #8AB2FF;
+      --color-zoom-text: #a9b1d6;
+      --color-explosion: #FFB86C;
+
+      /* Fonts */
+      --font-main:     sans-serif;
+      --font-display:  'Orbitron', sans-serif;
+
+      /* Spacing */
+      --sp-sm: 4px;
+      --sp-md: 6px;
+      --sp-lg: 8px;
+    }
+
+    body {
+      margin: 0;
+      background: #111;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      color: #ccc;
+      font-family: sans-serif;
+    }
+    #container {
+      position: relative;
+      width: 500px;
+      height: 500px;
+      background: #000;
+    }
+    #infoBox {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(22,22,22,0.8);
+      color: #ccc;
+      padding: 4px 6px;
+      border-radius: 3px;
+      font-size: 0.8em;
+      pointer-events: none;
+      border: 1px ridge #666;
+      z-index: 1000;
+      max-width: 200px;
+      line-height: 1.2;
+    }
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1001;
+      font-size: 0.9em;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    #turnSlider {
+      vertical-align: middle;
+    }
+    #planetSelect {
+      background: #222;
+      color: #ccc;
+      border: 1px solid #555;
+      padding: 2px;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <label for="planetSelect">Planet:</label>
+    <select id="planetSelect"></select>
+    <label for="turnSlider">Turn: <span id="turnLabel">1</span></label>
+    <input type="range" id="turnSlider" min="1" max="1" value="1">
+  </div>
+  <div id="container">
+    <div id="infoBox">
+      <div class="header"></div>
+      <canvas id="infoBoxCanvas"></canvas>
+      <div class="footer"></div>
+    </div>
+  </div>
+  <script>
+    let starmapData, econreportData;
+    let currentTurnId = 1;
+    let targetPlanetId = null;
+    const infoBoxCanvas = document.getElementById('infoBoxCanvas');
+    const infoBoxCtx = infoBoxCanvas.getContext('2d');
+
+    Promise.all([
+      fetch('starmap.json').then(res => res.json()),
+      fetch('econreport.json').then(res => res.json())
+    ])
+    .then(([s, e]) => {
+      starmapData = s;
+      econreportData = e.econreport.planets;
+      initializeControls();
+    })
+    .catch(err => console.error("Failed to load data:", err));
+
+    function getColor(ownerid) {
+      const player = starmapData.players.find(p => p.id === ownerid);
+      return player ? player.color : "#888888";
+    }
+
+    function getPlanetOwners(turnIndex) {
+      const ownerString = starmapData.planet_owners[turnIndex - 1];
+      const owners = {};
+      for (let i = 0; i < ownerString.length; i++) {
+        const ch = ownerString[i];
+        const owner = parseInt(ch, 36);  // base-36 decode
+        owners[i] = owner;  // planet ID is index, planet "0" is unused
+      }
+      return owners;
+    }
+
+    function resizeCanvasToMapAspect() {
+      const wrapper = document.getElementById("infoBox");
+      const canvas = document.getElementById("infoBoxCanvas");
+
+      const maxWidth = Math.min(wrapper.clientWidth, 900); // keep canvas modest
+      const maxHeight = wrapper.clientHeight;
+
+      const size = Math.min(maxWidth, maxHeight);
+      canvas.width = size;
+      canvas.height = size;
+    }
+
+    function initializeControls() {
+      const slider = document.getElementById('turnSlider');
+      const label = document.getElementById('turnLabel');
+      const select = document.getElementById('planetSelect');
+
+      // Sort planets by id
+      const sortedPlanets = [...starmapData.planets].sort((a, b) => a.id - b.id);
+
+      // Populate planet dropdown with "P-<id> name"
+      sortedPlanets.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = `P${p.id}-${p.name}`;
+        select.appendChild(opt);
+      });
+      // Set default planet
+      targetPlanetId = sortedPlanets[26]?.id;
+      select.value = targetPlanetId;
+
+      // Configure turn slider
+      slider.max = econreportData.length - 1;
+      slider.value = currentTurnId;
+      label.textContent = currentTurnId;
+
+      // Event listeners
+      select.addEventListener('change', e => {
+        targetPlanetId = parseInt(e.target.value, 10);
+        updateInfo();
+      });
+      slider.addEventListener('input', e => {
+        currentTurnId = parseInt(e.target.value, 10);
+        label.textContent = currentTurnId;
+        updateInfo();
+      });
+
+      resizeCanvasToMapAspect();
+
+      updateInfo();
+    }
+
+    const NATIVES = {
+      '0': '',
+      '1': 'Humanoid',
+      '2': 'Bovinoid',
+      '3': 'Reptilian',
+      '4': 'Avian',
+      '5': 'Amorphous',
+      '6': 'Insectoid',
+      '7': 'Amphibian',
+      '8': 'Ghipsoldal',
+      '9': 'Siliconoid'
+    };
+
+    const GOVT = {
+      '0': '',
+      '1': 'Anarchy',
+      '2': 'PreTribal',
+      '3': 'EarlyTribal',
+      '4': 'Tribal',
+      '5': 'Feudal',
+      '6': 'Monarchy',
+      '7': 'Representative',
+      '8': 'Participatory',
+      '9': 'Unity'
+    };
+
+    const TEMP_COLOURS = [
+      "#4961d2", // 0
+      "#5875e1", // 1
+      "#6788ee", // 5
+      "#779af7", // 10
+      "#88abfd", // 15
+      "#9abbff", // 20
+      "#aac7fd", // 25
+      "#bad0f8", // 30
+      "#c9d7f0", // 35
+      "#d6dce4", // 40
+      "#e9f7df", // 50
+      "#faf3d4", // 60
+      "#f7d0bc", // 70
+      "#f7b89c", // 75
+      "#f7a889", // 80
+      "#f39475", // 85
+      "#ec7f63", // 90
+      "#e26952", // 95
+      "#d55042", // 99
+      "#c53334", // 100
+    ]
+
+    const CLAN_THRESHOLDS = [0, 1, 2, 5, 
+                       10, 20, 50, 60, 70, 80, 90,
+                       100, 200, 500, 600, 700, 800, 900,
+                       1_000, 2_000, 5_000, 6_000, 7_000, 8_000, 9_000,
+                       10_000, 20_000, 30_000, 40_000, 50_000,
+                       60_000, 70_000, 80_000, 90_000, 100_000,
+                       200_000]
+
+    const THRESHOLDS = [0, 1, 2, 5,
+                  10, 20, 30, 40, 50, 60, 70, 80, 90,
+                  100, 200, 300, 400, 500, 600, 700, 800, 900,
+                  1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000,
+                  10_000, 20_000, 30_000, 40_000, 50_000]
+
+    const TEMP_THRESHOLDS = [0, 1, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 75, 80, 85, 90, 95, 99, 100]
+
+    function tval(val, thresholds) {
+      return thresholds[parseInt(val, 36)];
+    }
+
+    function nval(val, names) {
+      return names[val];
+    }
+
+    function buildEcon(econrec) {
+      const [temp, nativetype, nativegovernment, nativeclans, clans, megacredits, neutronium, molybdenum, duranium, tritanium, groundneutronium, groundmolybdenum, groundduranium, groundtritanium] = econrec;
+      return {
+        temp:             tval(temp, TEMP_THRESHOLDS),
+        tempColor:        tval(temp, TEMP_COLOURS),
+        nativeRace:       nval(nativetype, NATIVES),
+        government:       nval(nativegovernment, GOVT),
+        nativeClans:      tval(nativeclans, CLAN_THRESHOLDS),
+        clans:            tval(clans, CLAN_THRESHOLDS),
+        megacredits:      tval(megacredits, THRESHOLDS),
+        neutronium:       tval(neutronium, THRESHOLDS),
+        molybdenum:       tval(molybdenum, THRESHOLDS),
+        duranium:         tval(duranium, THRESHOLDS),
+        tritanium:        tval(tritanium, THRESHOLDS),
+        groundneutronium: tval(groundneutronium, THRESHOLDS),
+        groundmolybdenum: tval(groundmolybdenum, THRESHOLDS),
+        groundduranium:   tval(groundduranium, THRESHOLDS),
+        groundtritanium:  tval(groundtritanium, THRESHOLDS)
+      };
+    }
+
+    /**
+     * Returns the last updated econ value for a given planet and turn
+     */
+    function getPlanetStats(planetId, turnId) {
+      if (turnId < 1) {
+        return "unknown";
+      }
+      const turnData = econreportData[turnId - 1] || {};
+      return turnData.hasOwnProperty(planetId) ? turnData[planetId] : getPlanetStats(planetId, turnId - 1);
+    }
+
+    function drawCircle(ctx, x, y, radius, color) {
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, 2 * Math.PI);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    function drawRect(ctx, x, y, width, height, color) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, width, height);
+    }
+
+    function updateInfo() {
+      const header = document.querySelector('#infoBox .header');
+      const footer = document.querySelector('#infoBox .footer');
+      const planet = starmapData.planets.find(p => p.id === targetPlanetId);
+      const starbaseSet = new Set(starmapData.starbases[currentTurnId - 1] || []);
+      let starbase = starbaseSet.has(targetPlanetId)
+      if (!planet) {
+        return;
+      }
+      const ownerid = getPlanetOwners(currentTurnId)[targetPlanetId];
+      let ownerLabel = "Unowned";
+      if (ownerid) {
+        const player = starmapData.players.find(p => p.id === ownerid);
+        ownerLabel = `[${ownerid}] ${player.race}`;
+      }
+      const econrec = getPlanetStats(targetPlanetId, currentTurnId);
+      const econ = buildEcon(econrec);
+      const color = getColor(ownerid);
+
+      const ctx = infoBoxCtx;
+      const size = infoBoxCanvas.width;
+      ctx.clearRect(0, 0, size, size);
+      drawRect(ctx, 0, 0, size, size, color);
+
+      // owner
+      ctx.font          = `12px sans-serif`;
+
+      ctx.textAlign     = 'left';
+      ctx.textBaseline  = 'middle';
+      ctx.fillStyle     = color;
+      ctx.fillText(ownerLabel, 8, size - 10);
+
+      // temp
+      ctx.textAlign     = 'right';
+      ctx.fillStyle     = econ.tempColor;
+      ctx.fillText(`${econ.temp}°`, size - 6, 12);
+
+      if (starbase) {
+        ctx.font          = `12px sans-serif`;
+        ctx.textAlign     = 'right';
+        ctx.textBaseline  = 'middle';
+        ctx.fillStyle     = color;
+        ctx.fillText('⨁', size/2 + 38, size/2 - 26);
+      }
+
+      if (econ.nativeRace) {
+        ctx.textAlign     = 'rights';
+        ctx.textBaseline  = 'middle';
+        ctx.fillStyle     = color;
+        ctx.fillText(econ.nativeRace, size - 6, size - 24);
+        ctx.fillText(econ.government, size - 6, size - 10);
+      }
+
+      // draw the planet
+      drawCircle(ctx, size/2, size/2, 20, econ.tempColor);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      header.innerHTML = `<strong>P${planet.id}-${planet.name}</strong><br>`
+      footer.innerHTML = `x: ${planet.x}, y: ${planet.y}`;
+    }
+  </script>
+</body>
+</html>

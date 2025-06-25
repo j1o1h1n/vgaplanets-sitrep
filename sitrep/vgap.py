@@ -98,8 +98,11 @@ def get_player_race_name(turn: "Turn") -> str:
 
 def get_diplomacy_color(turn: "Turn", player_id: PLAYER_ID) -> RGB:
     """Get the colour set in the Planets Nu diplomacy tab"""
-    val = query_one(turn.data["relations"], lambda rel: rel["playertoid"] == player_id)["color"]
+    val = query_one(turn.data["relations"], lambda rel: rel["playertoid"] == player_id)[
+        "color"
+    ]
     return "#" + val if val else "#68e891"
+
 
 class Score(NamedTuple):
     turn_id: int
@@ -276,7 +279,7 @@ class Game:
         self._turns = turns
 
         # get information from the model turn 12 (arbitrary choice!)
-        player_turns = self._turns[self.meta['player_id']]
+        player_turns = self._turns[self.meta["player_id"]]
         model_turn = player_turns[min(12, max(player_turns.keys()))]
 
         races = model_turn.data["races"]
@@ -286,7 +289,15 @@ class Game:
         for p in players:
             race = self.races[p["raceid"]]
             color = get_diplomacy_color(model_turn, p["id"])
-            player = Player(p["id"], p["raceid"], p["username"], race["name"], color, race['shortname'], race['adjective'])
+            player = Player(
+                p["id"],
+                p["raceid"],
+                p["username"],
+                race["name"],
+                color,
+                race["shortname"],
+                race["adjective"],
+            )
             self.players[p["id"]] = player
         if 0 in self.races:
             del self.races[0]
@@ -321,7 +332,9 @@ class Game:
                 turns = self.turns(player_id)
                 for turn_id in turns:
                     turn = turns[turn_id]
-                    data = query_one(turn.data["scores"], lambda sd: sd["ownerid"] == player_id)
+                    data = query_one(
+                        turn.data["scores"], lambda sd: sd["ownerid"] == player_id
+                    )
                     res[player_id][turn_id] = create_score(data)
         else:
             res = {p: {} for p in self.players}

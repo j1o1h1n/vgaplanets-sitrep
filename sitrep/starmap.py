@@ -8,6 +8,8 @@ from . import vgap
 
 ALPHANUM = string.digits + string.ascii_uppercase
 
+BASE36 = "0123456789abcdefghijklmnopqrstuvwxyz"
+
 HULL_SPECIAL_NAMES = {
     14: "NFC",
     15: "SDSF",
@@ -589,6 +591,121 @@ def write_messagelist(game: vgap.Game, output_path: str) -> None:
   "messagelist": [
 {messages_data}
   ]
+}}
+"""
+    with open(output_path, "w") as f:
+        f.write(output)
+
+
+CLAN_THRESHOLDS = [0, 1, 2, 5, 
+                   10, 20, 50, 60, 70, 80, 90,
+                   100, 200, 500, 600, 700, 800, 900,
+                   1_000, 2_000, 5_000, 6_000, 7_000, 8_000, 9_000,
+                   10_000, 20_000, 30_000, 40_000, 50_000,
+                   60_000, 70_000, 80_000, 90_000, 100_000,
+                   200_000]
+
+THRESHOLDS = [0, 1, 2, 5,
+              10, 20, 30, 40, 50, 60, 70, 80, 90,
+              100, 200, 300, 400, 500, 600, 700, 800, 900,
+              1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000,
+              10_000, 20_000, 30_000, 40_000, 50_000]
+
+TEMP_THRESHOLDS = [0, 1, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 75, 80, 85, 90, 95, 99, 100]
+
+def bucket_value(value: int, thresholds) -> str:
+    if value <= 0:
+        return BASE36[0]
+    prev = thresholds[0]
+    for i, bound in enumerate(thresholds):
+        if value <= bound:
+            if value < (bound + prev) / 2:
+                return BASE36[i - 1]
+            return BASE36[i]
+        prev = bound
+    return BASE36[-1]
+
+
+def build_planet_report(planet):
+    rec = [bucket_value(planet['temp'], TEMP_THRESHOLDS)]
+    rec.append(str(planet['nativetype']))
+    rec.append(str(planet['nativegovernment']))
+    for key in ['nativeclans', 'clans']:
+        rec.append(bucket_value(planet[key], CLAN_THRESHOLDS))
+    rec.append(bucket_value(planet['megacredits'] + planet['supplies'], THRESHOLDS))
+    for key in ['neutronium', 'molybdenum', 'duranium', 'tritanium', 'groundneutronium', 'groundmolybdenum', 'groundduranium', 'groundtritanium']:
+        rec.append(bucket_value(planet[key], THRESHOLDS))
+    # TODO income potential
+    return "".join(rec)
+
+
+def build_planet_reports(game):
+    maxturn = max(game.turns().keys())
+
+    first = {}
+    prev = {}
+    planet_reports = []
+    for turn_id in range(1, maxturn):
+        turns = {player.player_id: game.turns(player.player_id).get(turn_id, None) for player in game.players.values()}
+        owned = {}
+        unowned = {}
+        for owner_id in turns:
+            turn = turns[owner_id]
+            if turn is None:
+                continue
+            for p in turn.planets():
+                planet_id = p['id']
+                if planet_id in owned or p['temp'] == -1:
+                    continue
+                if p['ownerid'] == owner_id:
+                    owned[planet_id] = p
+                    if planet_id in unowned:
+                        unowned.pop(planet_id)
+                elif planet_id not in unowned or unowned[planet_id]['infoturn'] < p['infoturn']:
+                    unowned[planet_id] = p
+                else:
+                    continue
+
+        report = {}
+        planets = {}
+        planets.update(owned)
+        planets.update(unowned)
+        for planet_id in planets:
+            planet = planets[planet_id]
+            rec = build_planet_report(planet)
+            if planet_id not in first:
+                first[planet_id] = rec
+                prev[planet_id] = rec        
+                continue
+            if planet_id in prev and prev[planet_id] == rec:
+                continue
+            report[planet_id] = rec
+            prev[planet_id] = rec        
+        planet_reports.append(report)
+    planet_reports[0] = first
+    return planet_reports
+
+
+def build_econreport(game: vgap.Game) -> dict[str,list[dict[int,str]]]:
+    maxturn = max(game.turns().keys())
+    econreport = {"planets": build_planet_reports(game), "players": []}
+    return econreport
+
+
+def write_econreport(game: vgap.Game, output_path: str) -> None:
+    econreport = build_econreport(game)
+    planets_data = ",\n".join(f"        {json.dumps(m)}" for m in econreport["planets"])
+    players_data = ",\n".join(f"        {json.dumps(m)}" for m in econreport["players"])
+
+    output = f"""{{
+  "econreport": {{
+    "planets": [
+{planets_data}
+    ],
+    "players": [
+{players_data}
+    ]
+  }}
 }}
 """
     with open(output_path, "w") as f:

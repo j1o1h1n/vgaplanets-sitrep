@@ -376,6 +376,7 @@ def shortest_paths(cliques: Clique, neighbours: Neighbours) -> ShortestPaths:
 
 # TBC
 
+
 class SphericalMapSettings:
 
     magic_padding = 20
@@ -402,9 +403,15 @@ class SphericalMapSettings:
         w = self.map_width
         h = self.map_height
         offsets = [
-            [-w, -h], [0, -h], [w, -h],
-            [-w,  0], [0,  0], [w,  0],
-            [-w,  h], [0,  h], [w,  h],
+            [-w, -h],
+            [0, -h],
+            [w, -h],
+            [-w, 0],
+            [0, 0],
+            [w, 0],
+            [-w, h],
+            [0, h],
+            [w, h],
         ]
         for dx, dy in offsets:
             yield {"x": x + dx, "y": y + dy}
@@ -415,7 +422,7 @@ class SphericalMapSettings:
         bl = Point(x0 + self.magic_padding, y0 + self.magic_padding)
         tr = Point(x1 + self.magic_padding, y1 + self.magic_padding)
         return (bl, tr)
-                   
+
     def __repr__(self):
         return f"<SphericalMapSettings bl: {self.bottom_left}, tr: {self.top_right}, w: {self.map_width}, h: {self.map_height}>"
 

@@ -241,7 +241,7 @@ h4 { font-size: 1.25rem; }
 <div id="mainLayout">
   <div>
     <div id="canvasWrapper" style="position:relative; display:inline-block;">
-      <canvas id="starmap" …></canvas>
+      <canvas id="starmap"></canvas>
       <div id="infoBox" style="
         position:absolute;
         top:8px;
@@ -299,12 +299,14 @@ h4 { font-size: 1.25rem; }
 Promise.all([
   fetch('starmap.json').then(res => res.json()),
   fetch('shiplist.json').then(res => res.json()),
-  fetch('messagelist.json').then(res => res.json())
+  fetch('messagelist.json').then(res => res.json()),
+  fetch('econreport.json').then(res => res.json())
 ])
-  .then(([starmapData, shiplistData, messagelistData]) => {
+  .then(([starmapData, shiplistData, messagelistData, econreportData]) => {
     window.starmapData = starmapData;
     window.shiplistData = shiplistData;
     window.messagelistData = messagelistData;
+    window.econreportData = econreportData;
     initializeMap();
   })
   .catch(err => {
