@@ -181,28 +181,42 @@
 
     const NATIVES = {
       '0': '',
-      '1': 'Humanoid',
-      '2': 'Bovinoid',
-      '3': 'Reptilian',
-      '4': 'Avian',
-      '5': 'Amorphous',
-      '6': 'Insectoid',
-      '7': 'Amphibian',
-      '8': 'Ghipsoldal',
-      '9': 'Siliconoid'
+      '1': 'Hum',
+      '2': 'Bov',
+      '3': 'Rep',
+      '4': 'Av',
+      '5': 'Amorph',
+      '6': 'Ins',
+      '7': 'Amph',
+      '8': 'Ghip',
+      '9': 'Sil'
     };
+
+    const NATIVE_COLORS = {
+      '0': '#888',
+      '1': "#0088ff",
+      '2': "yellow",
+      '3': "#44ff44",
+      '4': "white",
+      '5': "#ff4444",
+      '6': "white",
+      '7': "cyan",
+      '8': "#0088ff",
+      '9': "cyan",
+    };
+
 
     const GOVT = {
       '0': '',
-      '1': 'Anarchy',
-      '2': 'PreTribal',
-      '3': 'EarlyTribal',
-      '4': 'Tribal',
-      '5': 'Feudal',
-      '6': 'Monarchy',
-      '7': 'Representative',
-      '8': 'Participatory',
-      '9': 'Unity'
+      '1': '1-Anarc',
+      '2': '2-PreT',
+      '3': '3-ErlT',
+      '4': '4-Trib',
+      '5': '5-Feud',
+      '6': '6-Mon',
+      '7': '7-Repr',
+      '8': '8-Par',
+      '9': '9-Unity'
     };
 
     const TEMP_COLOURS = [
@@ -258,6 +272,7 @@
         temp:             tval(temp, TEMP_THRESHOLDS),
         tempColor:        tval(temp, TEMP_COLOURS),
         nativeRace:       nval(nativetype, NATIVES),
+        nativeColor:      nval(nativetype, NATIVE_COLORS),
         government:       nval(nativegovernment, GOVT),
         nativeClans:      tval(nativeclans, CLAN_THRESHOLDS),
         clans:            tval(clans, CLAN_THRESHOLDS),
@@ -295,6 +310,101 @@
       ctx.strokeStyle = color;
       ctx.lineWidth = 1;
       ctx.strokeRect(x, y, width, height);
+    }
+
+    function drawPopn(ctx, x, y, clans, color) {
+      if (clans == 1) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + 8, y);
+        ctx.stroke();
+        return;
+      }
+      if (clans < 10) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + 8, y);
+        ctx.moveTo(x, y - 4);
+        ctx.lineTo(x + 8, y - 4);
+        ctx.stroke();
+        return;
+      }
+
+      let log10 = Math.min(Math.trunc(Math.log10(clans)), 5);
+      let div = Math.pow(10, log10);
+      let boxes = Math.min(Math.round(clans / div), 12);
+      let bars = log10;
+      let height = log10 * 2 + 2;
+      let width = log10 * 4 + 4;
+
+      let y1 = y - height;
+      for (let i = 0; i < boxes; i++) {
+        let y2 = y1 - ((height + 2) * i);
+        drawRect(ctx, x, y2, width, height, color);
+        if (i % 3 == 2) {
+          ctx.beginPath();
+          ctx.moveTo(x, y2 + 1);
+          ctx.lineTo(x + width, y2 + 1);
+          ctx.stroke();
+        }
+        for (let j = 1; j < bars; j++) {
+          ctx.beginPath();
+          ctx.moveTo(x + width - j, y2);
+          ctx.lineTo(x + width - j, y2 + height);
+          ctx.stroke();
+        }
+      }
+    }
+
+    function drawNativePopn(ctx, x, y, clans, color) {
+      if (clans == 1) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 8, y);
+        ctx.stroke();
+        return;
+      }
+      if (clans < 10) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 8, y);
+        ctx.moveTo(x, y - 4);
+        ctx.lineTo(x - 8, y - 4);
+        ctx.stroke();
+        return;
+      }
+
+      let log10 = Math.min(Math.trunc(Math.log10(clans)), 5);
+      let div = Math.pow(10, log10);
+      let boxes = Math.min(Math.round(clans / div), 12);
+      let bars = log10;
+      let height = log10 * 2 + 2;
+      let width = log10 * 4 + 4;
+      let y1 = y - height;
+      for (let i = 0; i < boxes; i++) {
+        let y2 = y1 - ((height + 2) * i);
+        drawRect(ctx, x - width, y2, width, height, color);
+        if (i % 3 == 2) {
+          ctx.beginPath();
+          ctx.moveTo(x, y2 + 1);
+          ctx.lineTo(x - width, y2 + 1);
+          ctx.stroke();
+        }
+        for (let j = 1; j < bars; j++) {
+          ctx.beginPath();
+          ctx.moveTo(x - width + j, y2);
+          ctx.lineTo(x - width + j, y2 + height);
+          ctx.stroke();
+        }
+      }
     }
 
     function updateInfo() {
@@ -339,22 +449,28 @@
         ctx.textAlign     = 'right';
         ctx.textBaseline  = 'middle';
         ctx.fillStyle     = color;
-        ctx.fillText('⨁', size/2 + 38, size/2 - 26);
+        // ctx.fillText('⨁', size/2 + 38, size/2 - 26);
+        ctx.fillText('⨁', size/2 + 48, size/2 - 46);
       }
 
       if (econ.nativeRace) {
         ctx.textAlign     = 'rights';
         ctx.textBaseline  = 'middle';
-        ctx.fillStyle     = color;
-        ctx.fillText(econ.nativeRace, size - 6, size - 24);
-        ctx.fillText(econ.government, size - 6, size - 10);
+        ctx.fillStyle     = econ.nativeColor;
+        ctx.fillText(`${econ.government} ${econ.nativeRace}`, size - 6, size - 10);
+        drawNativePopn(ctx, size - 6, size - 20, econ.nativeClans, "#fff");
       }
+
+      if (ownerid) {
+        drawPopn(ctx, 6, size - 20, econ.clans, color);
+      }
+
+      ctx.arc(size/2, size/2, 30, 2 * Math.PI);
+      ctx.fillStyle = color;
+      ctx.fill();
 
       // draw the planet
       drawCircle(ctx, size/2, size/2, 20, econ.tempColor);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.stroke();
 
       header.innerHTML = `<strong>P${planet.id}-${planet.name}</strong><br>`
       footer.innerHTML = `x: ${planet.x}, y: ${planet.y}`;

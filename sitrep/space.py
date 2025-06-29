@@ -383,10 +383,10 @@ class SphericalMapSettings:
 
     def __init__(self, turn):
         settings = turn.data["settings"]
-        mapshape = settings["mapshape"]
+        spherical = turn.data['settings']['sphere']
         mapwidth = settings["mapwidth"]
         mapheight = settings["mapheight"]
-        if mapshape != 1:
+        if spherical != 1:
             raise Exception("map is not spherical")
         true_width = mapwidth + self.magic_padding
         true_height = mapheight + self.magic_padding

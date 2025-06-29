@@ -100,20 +100,22 @@ FIGHTER_BV = 100
 # message types
 BATTLE, EXPLOSION = 100, 101
 
-PLAYER_COLORS = [
-    "#a6cee3",
-    "#1e77b4",
-    "#b2df8a",
-    "#32a02b",
-    "#fb9a99",
-    "#e3191b",
-    "#fdbf6e",
-    "#ff7e00",
-    "#cab2d6",
-    "#693c9a",
-    "#ffff99",
-    "#b15827",
-]
+PLAYER_COLORS = ['#E8705F',
+ '#EC8B49',
+ '#DFB431',
+ '#A0AF54',
+ '#5ABDAC',
+ '#66A0C8',
+ '#A699D0',
+ '#E47DA8',
+ '#FFCABB',
+ '#FED3AF',
+ '#F6E2A0',
+ '#DDE2B2',
+ '#BFE8D9',
+ '#C6DDE8',
+ '#E2D9E9',
+ '#FCCFDA']
 
 
 def get_battle_value(ship: dict[str, Any], hull: dict[str, Any]) -> tuple[int, int]:
@@ -262,7 +264,7 @@ def build_starmap(game: vgap.Game) -> dict[str, Any]:
 def write_starmap(game: vgap.Game, output_path: str) -> None:
     turn = game.turns()[1]
     settings = turn.data["settings"]
-    mapshape = settings["mapshape"]
+    spherical = str(settings["sphere"]).lower()
     mapwidth = settings["mapwidth"]
     mapheight = settings["mapheight"]
     players = [
@@ -295,7 +297,7 @@ def write_starmap(game: vgap.Game, output_path: str) -> None:
   "title": {json.dumps(game.name)},
   "width": {mapwidth},
   "height": {mapheight},
-  "mapshape": {mapshape},
+  "spherical": {spherical},
   "padding": 20,
   "turns": {turns},
   "players": [

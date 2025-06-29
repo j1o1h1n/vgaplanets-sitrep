@@ -278,17 +278,17 @@ class Game:
         self.info = info
         self._turns = turns
 
-        # get information from the model turn 12 (arbitrary choice!)
-        player_turns = self._turns[self.meta["player_id"]]
-        model_turn = player_turns[min(12, max(player_turns.keys()))]
-
+        # get player information from 4th turn unless not available
+        model_turn = self._turns.get(self.meta["player_id"], {}).get(4)
+        if not model_turn:
+            return
         races = model_turn.data["races"]
         self.races = {r["id"]: r for r in races}
         players = model_turn.data["players"]
         self.players = {}
         for p in players:
             race = self.races[p["raceid"]]
-            color = get_diplomacy_color(model_turn, p["id"])
+            color = get_diplomacy_color(model_turn, p["id"]) if model_turn else "#cccccc"
             player = Player(
                 p["id"],
                 p["raceid"],

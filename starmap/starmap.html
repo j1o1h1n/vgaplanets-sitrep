@@ -295,12 +295,14 @@ h4 { font-size: 1.25rem; }
 
 
 <script>
+const params = new URLSearchParams(window.location.search);
+const paramGameId = params.get('gameid') || '';
 
 Promise.all([
-  fetch('starmap.json').then(res => res.json()),
-  fetch('shiplist.json').then(res => res.json()),
-  fetch('messagelist.json').then(res => res.json()),
-  fetch('econreport.json').then(res => res.json())
+  fetch(`starmap-${paramGameId}.json`).then(res => res.json()),
+  fetch(`shiplist-${paramGameId}.json`).then(res => res.json()),
+  fetch(`messagelist-${paramGameId}.json`).then(res => res.json()),
+  fetch(`econreport-${paramGameId}.json`).then(res => res.json())
 ])
   .then(([starmapData, shiplistData, messagelistData, econreportData]) => {
     window.starmapData = starmapData;
@@ -726,7 +728,7 @@ function updateZoomIndicator() {
 }
 
 function getProjectedPositions(x, y) {
-  if (starmapData.mapshape !== 1) return [{ x, y, primary: true }];
+  if (!starmapData.spherical) return [{ x, y, primary: true }];
 
   const w = starmapData.width + 20;
   const h = starmapData.height + 20;
@@ -821,12 +823,23 @@ function drawMap(options = {}) {
   const trueWidth = mapwidth + magicPadding;
   const trueHeight = starmapData.height + magicPadding;
 
-  bounds = {
-    left: trueWidth,
-    right: trueWidth * 2,
-    bottom: trueHeight,
-    top: trueHeight * 2
-  };
+  if (starmapData.spherical) {
+    bounds = {
+      left: trueWidth,
+      right: trueWidth * 2,
+      bottom: trueHeight,
+      top: trueHeight * 2
+    };
+  } else {
+    const halfWidth = trueWidth / 2 + magicPadding;
+    const halfHeight = trueHeight / 2 + magicPadding;
+    bounds = {
+      left: 2000 - halfWidth,
+      right: 2000 + halfWidth,
+      bottom: 2000 - halfHeight,
+      top: 2000 + halfHeight
+    };
+  }
 
   mapWidth = bounds.right - bounds.left;
   mapHeight = bounds.top - bounds.bottom;
