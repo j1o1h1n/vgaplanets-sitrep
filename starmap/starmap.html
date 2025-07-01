@@ -128,6 +128,30 @@ h4 { font-size: 1.25rem; }
   background: #000;
 }
 
+/* InfoBox */
+
+#infoBox {
+  position: absolute;
+  top: 8px;
+  right: 23px;
+  background: rgba(22,22,22,0.8);
+  color: #ccc;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 0.8em;
+  pointer-events: none;
+  border: 1px ridge #666;
+  z-index: 1000;
+  max-width: 200px;
+  line-height: 1.2;
+}
+
+.infoBoxCanvasWrapper {
+  padding: 4px 6px;
+  justify-content: center;
+  align-items: center;
+}
+
 /* Sidebar */
 #sidebar {
   min-width: 250px;
@@ -242,21 +266,15 @@ h4 { font-size: 1.25rem; }
   <div>
     <div id="canvasWrapper" style="position:relative; display:inline-block;">
       <canvas id="starmap"></canvas>
-      <div id="infoBox" style="
-        position:absolute;
-        top:8px;
-        right:20px;
-        background:rgba(22,22,22,0.8);
-        color:#ccc;
-        padding:4px 6px;
-        border-radius:3px;
-        font-size:0.8em;
-        pointer-events:none;
-        border: 1px ridge #666;
-        ">
-        <div class="content">Deep Space <br> x: 0, y: 0</div>
+      <div id="infoBox">
+        <div class="header"></div>
+        <div class="infoBoxCanvasWrapper">
+          <canvas id="infoBoxCanvas"></canvas>
+        </div>
+        <div class="footer"></div>
       </div>
     </div>
+
     <div id="controls">
       <label for="turnSlider">Turn: <span id="turnLabel">1</span></label>
       <input type="range" id="turnSlider" min="1" max="1" value="1">
@@ -292,8 +310,6 @@ h4 { font-size: 1.25rem; }
   </div>
 </div>
 
-
-
 <script>
 const params = new URLSearchParams(window.location.search);
 const paramGameId = params.get('gameid') || '';
@@ -308,17 +324,105 @@ Promise.all([
     window.starmapData = starmapData;
     window.shiplistData = shiplistData;
     window.messagelistData = messagelistData;
-    window.econreportData = econreportData;
+    window.econreportData = econreportData.econreport;
     initializeMap();
   })
   .catch(err => {
     console.error("Failed to load data:", err);
   });
 
+const NATIVES = {
+  '0': '',
+  '1': 'Hum',
+  '2': 'Bov',
+  '3': 'Rep',
+  '4': 'Av',
+  '5': 'Amorph',
+  '6': 'Ins',
+  '7': 'Amph',
+  '8': 'Ghip',
+  '9': 'Sil'
+};
+
+const NATIVE_COLORS = {
+  '0': '#888',
+  '1': "#0088ff",
+  '2': "yellow",
+  '3': "#44ff44",
+  '4': "white",
+  '5': "#ff4444",
+  '6': "white",
+  '7': "cyan",
+  '8': "#0088ff",
+  '9': "cyan",
+};
+
+const GOVT = {
+  '0': '',
+  '1': '1-Anarc',
+  '2': '2-PreT',
+  '3': '3-ErlT',
+  '4': '4-Trib',
+  '5': '5-Feud',
+  '6': '6-Mon',
+  '7': '7-Repr',
+  '8': '8-Par',
+  '9': '9-Unity'
+};
+
+const TEMP_COLOURS = [
+  "#4961d2", // 0
+  "#5875e1", // 1
+  "#6788ee", // 5
+  "#779af7", // 10
+  "#88abfd", // 15
+  "#9abbff", // 20
+  "#aac7fd", // 25
+  "#bad0f8", // 30
+  "#c9d7f0", // 35
+  "#d6dce4", // 40
+  "#e9f7df", // 50
+  "#faf3d4", // 60
+  "#f7d0bc", // 70
+  "#f7b89c", // 75
+  "#f7a889", // 80
+  "#f39475", // 85
+  "#ec7f63", // 90
+  "#e26952", // 95
+  "#d55042", // 99
+  "#c53334", // 100
+]
+
+const RESOURCE_COLOURS = {
+  'neutronium': "#FFE1D5",
+  'duranium': "#DAD8CE",
+  'tritanium': "#92BFDB",
+  'molybdenum': "#E47DA8",
+  'megacredits': "#ECCB60",
+}
+
+const CLAN_THRESHOLDS = [0, 1, 2, 5, 
+                   10, 20, 50, 60, 70, 80, 90,
+                   100, 200, 500, 600, 700, 800, 900,
+                   1_000, 2_000, 5_000, 6_000, 7_000, 8_000, 9_000,
+                   10_000, 20_000, 30_000, 40_000, 50_000,
+                   60_000, 70_000, 80_000, 90_000, 100_000,
+                   200_000]
+
+const THRESHOLDS = [0, 1, 2, 5,
+              10, 20, 30, 40, 50, 60, 70, 80, 90,
+              100, 200, 300, 400, 500, 600, 700, 800, 900,
+              1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000,
+              10_000, 20_000, 30_000, 40_000, 50_000]
+
+const TEMP_THRESHOLDS = [0, 1, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 75, 80, 85, 90, 95, 99, 100]
 
 const canvas = document.getElementById('starmap');
 const ctx = canvas.getContext('2d');
 const tooltip = document.getElementById('tooltip');
+const infoBoxCanvas = document.getElementById('infoBoxCanvas');
+const infoBoxCtx = infoBoxCanvas.getContext('2d');
+
 let starmapTree = null;
 const shipTrees = {};
 const newsTrees = {};
@@ -481,7 +585,6 @@ function getPlanetOwners(turnIndex) {
   return owners;
 }
 
-
 function getShipsForTurn(turn) {
   const raw = shiplistData.shiplist[turn - 1];
   const result = [];
@@ -561,14 +664,14 @@ function colorToRGBA(color, alpha) {
     return "rgba(" + red + ", " + green + ", " + blue + ", " + alpha + ")";
 }
 
-function drawCircle(x, y, radius, color) {
+function drawCircle(ctx, x, y, radius, color) {
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, 2 * Math.PI);
   ctx.fillStyle = color;
   ctx.fill();
 }
 
-function drawOpenCircle(x, y, radius, color) {
+function drawOpenCircle(ctx, x, y, radius, color) {
   const OFFSET = -1
   ctx.beginPath();
   ctx.arc(x + OFFSET, y + OFFSET, radius, 0, 2 * Math.PI);
@@ -577,7 +680,7 @@ function drawOpenCircle(x, y, radius, color) {
   ctx.stroke();
 }
 
-function drawCross(x, y, size, color) {
+function drawCross(ctx, x, y, size, color) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -588,7 +691,13 @@ function drawCross(x, y, size, color) {
   ctx.stroke();
 }
 
-function drawRect(x, y, size, color) {
+function drawRect(ctx, x, y, width, height, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, width, height);
+}
+
+function drawSquare(ctx, x, y, size, color) {
   const width = size * Math.SQRT2;
   const height = size;
   const halfW = width / 2;
@@ -606,7 +715,7 @@ function drawRect(x, y, size, color) {
   return { topLeft, topRight, bottomRight, bottomLeft };
 }
 
-function drawLeftSlash(corners, color) {
+function drawLeftSlash(ctx, corners, color) {
   ctx.beginPath();
   ctx.moveTo(corners.topLeft.x, corners.topLeft.y);
   ctx.lineTo(corners.bottomRight.x, corners.bottomRight.y);
@@ -614,7 +723,7 @@ function drawLeftSlash(corners, color) {
   ctx.stroke();
 }
 
-function drawRightSlash(corners, color) {
+function drawRightSlash(ctx, corners, color) {
   ctx.beginPath();
   ctx.moveTo(corners.topRight.x, corners.topRight.y);
   ctx.lineTo(corners.bottomLeft.x, corners.bottomLeft.y);
@@ -622,18 +731,18 @@ function drawRightSlash(corners, color) {
   ctx.stroke();
 }
 
-function drawSlashedRect(x, y, size, color) {
-  const corners = drawRect(x, y, size, color);
-  drawLeftSlash(corners, color);
+function drawSlashedRect(ctx, x, y, size, color) {
+  const corners = drawSquare(ctx, x, y, size, color);
+  drawLeftSlash(ctx, corners, color);
 }
 
-function drawCrossedRect(x, y, size, color) {
-  const corners = drawRect(x, y, size, color);
-  drawLeftSlash(corners, color);
-  drawRightSlash(corners, color);
+function drawCrossedRect(ctx, x, y, size, color) {
+  const corners = drawSquare(ctx, x, y, size, color);
+  drawLeftSlash(ctx, corners, color);
+  drawRightSlash(ctx, corners, color);
 }
 
-function drawTriangle(x, y, size, color) {
+function drawTriangle(ctx, x, y, size, color) {
   const Y_OFFSET = -3
   const base = size * Math.SQRT2;
   const halfBase = base / 2;
@@ -650,7 +759,7 @@ function drawTriangle(x, y, size, color) {
   ctx.stroke();
 }
 
-function drawNebula(x, y, neb, ctx) {
+function drawNebula(ctx, x, y, neb, ctx) {
   var rad = neb.radius * zoom;
   var green = 200 + (neb.gas * 10);
   var blue = 200 - (neb.gas * 10);
@@ -668,7 +777,7 @@ function drawNebula(x, y, neb, ctx) {
   ctx.fill();
 }
 
-function drawStarCluster(x, y, star) {
+function drawStarCluster(ctx, x, y, star) {
   var rad = star.radius * zoom;
 
   var color = "#FF0000";
@@ -722,6 +831,241 @@ function drawStarCluster(x, y, star) {
   ctx.fill();
 }
 
+/* --- infobox functions --- */
+
+function tval(val, thresholds) {
+  return thresholds[parseInt(val, 36)];
+}
+
+function nval(val, names) {
+  return names[val];
+}
+
+function buildEcon(econrec) {
+  const [temp, nativetype, nativegovernment, nativeclans, clans, megacredits, neutronium, molybdenum, duranium, tritanium, groundneutronium, groundmolybdenum, groundduranium, groundtritanium] = econrec;
+  return {
+    temp:             tval(temp, TEMP_THRESHOLDS),
+    tempColor:        tval(temp, TEMP_COLOURS),
+    nativeRace:       nval(nativetype, NATIVES),
+    nativeColor:      nval(nativetype, NATIVE_COLORS),
+    government:       nval(nativegovernment, GOVT),
+    nativeClans:      tval(nativeclans, CLAN_THRESHOLDS),
+    clans:            tval(clans, CLAN_THRESHOLDS),
+    megacredits:      tval(megacredits, THRESHOLDS),
+    neutronium:       tval(neutronium, THRESHOLDS),
+    molybdenum:       tval(molybdenum, THRESHOLDS),
+    duranium:         tval(duranium, THRESHOLDS),
+    tritanium:        tval(tritanium, THRESHOLDS),
+    groundneutronium: tval(groundneutronium, THRESHOLDS),
+    groundmolybdenum: tval(groundmolybdenum, THRESHOLDS),
+    groundduranium:   tval(groundduranium, THRESHOLDS),
+    groundtritanium:  tval(groundtritanium, THRESHOLDS)
+  };
+}
+
+/**
+ * Map “val” onto a [0..3] width and a [0..10] height.
+ * For any v < 11, returns {0,0}.
+ */
+function getWedgeWidthAndHeight(val) {
+  if (val < 11) {
+    return {width: 0, height: 0};
+  }
+  const n = val - 1;
+  const width = Math.min(3, Math.trunc(Math.log10(n)));
+  const divisor = 10 ** width;
+  const height = Math.min(Math.round(n / divisor), 10);
+  return {width, height};
+}
+
+function drawResources(ctx, x, y, econ, ground = false) {
+  const wedge   = 2 * Math.PI / 24;    // one “unit” of arc
+  const baseH   = 20;                  // minimum radius
+  const deltaH  = 5;                   // extra radius per height unit
+
+  // pick either the “surface” or “ground” resource keys
+  const rsrcs = ground
+    ? ["groundneutronium", "groundduranium", "groundtritanium", "groundmolybdenum"]
+    : ["neutronium",      "duranium",      "tritanium",      "molybdenum",      "megacredits"];
+
+  // 1) collect width/height units for each resource
+  const vals = {};
+  rsrcs.forEach(rsrc => {
+    vals[rsrc] = getWedgeWidthAndHeight(econ[rsrc]);
+  });
+
+  // 2) total up all the “width” units, then convert to arc
+  const totalUnits = rsrcs.reduce((sum, rsrc) => sum + vals[rsrc].width, 0);
+  const totalArc   = totalUnits * wedge;
+
+  // 3) starting angle: six wedges offset, then center the whole pie
+  let angle = ground
+    ?  6 * wedge + (totalArc / 2)
+    : -6 * wedge - (totalArc / 2);
+
+  // 4) draw each slice in turn
+  rsrcs.forEach(rsrc => {
+    const { width, height: hUnits } = vals[rsrc];
+    const arc      = width * wedge;
+    const radius   = baseH + hUnits * deltaH;
+    const start    = angle;
+    const end      = ground ? angle - arc : angle + arc;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    // if ground, draw clockwise (anticlockwise=true), else ccw
+    ctx.arc(x, y, radius, start, end, ground);
+    // pick colour: strip "ground" prefix when in ground mode
+    const colourKey = ground ? rsrc.substring(6) : rsrc;
+    ctx.fillStyle = RESOURCE_COLOURS[colourKey];
+    ctx.fill();
+
+    angle = end;
+  });
+}
+
+/**
+ * Returns the last updated econ value for a given planet and turn
+ */
+function getPlanetStats(planetId, turnId) {
+  if (turnId < 1) {
+    return "unknown";
+  }
+  const turnData = econreportData.planets[turnId - 1] || {};
+  return turnData.hasOwnProperty(planetId) ? turnData[planetId] : getPlanetStats(planetId, turnId - 1);
+}
+
+function drawPopn(ctx, x, y, clans, color, natives = false) {
+  const dir = natives ? -1 : 1;
+
+  // simple 1-clan line
+  if (clans === 1) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + dir * 8, y);
+    ctx.stroke();
+    return;
+  }
+
+  // up to 9 clans: two parallel lines
+  if (clans < 10) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + dir * 8, y);
+    ctx.moveTo(x, y - 4);
+    ctx.lineTo(x + dir * 8, y - 4);
+    ctx.stroke();
+    return;
+  }
+
+  // larger populations: stacked boxes + internal bars
+  const log10 = Math.min(Math.trunc(Math.log10(clans)), 5);
+  const div   = Math.pow(10, log10);
+  const boxes = Math.min(Math.round(clans / div), 12);
+  const bars  = log10;
+  const height = log10 * 2 + 2;
+  const width  = log10 * 4 + 4;
+  const y0     = y - height;
+
+  for (let i = 0; i < boxes; i++) {
+    const y2 = y0 - (height + 2) * i;
+    const rectX = x + (natives ? -width : 0);
+
+    // draw outer box
+    drawRect(ctx, rectX, y2, width, height, color);
+
+    // every third box: a horizontal divider 1px down from top
+    if (i % 3 === 2) {
+      ctx.beginPath();
+      ctx.moveTo(x, y2 + 1);
+      ctx.lineTo(x + dir * width, y2 + 1);
+      ctx.stroke();
+    }
+
+    // vertical bars indicating the log scale
+    for (let j = 1; j < bars; j++) {
+      const barX = x + dir * (width - j);
+      ctx.beginPath();
+      ctx.moveTo(barX, y2);
+      ctx.lineTo(barX, y2 + height);
+      ctx.stroke();
+    }
+  }
+}
+
+function updateInfoBoxPlanet(targetPlanetId) {
+  const header = document.querySelector('#infoBox .header');
+  const footer = document.querySelector('#infoBox .footer');
+  const planet = starmapData.planets.find(p => p.id === targetPlanetId);
+  const starbaseSet = new Set(starmapData.starbases[currentTurnId - 1] || []);
+  let starbase = starbaseSet.has(targetPlanetId)
+  if (!planet) {
+    return;
+  }
+  const ownerid = getPlanetOwners(currentTurnId)[targetPlanetId];
+  let ownerLabel = "Unowned";
+  if (ownerid) {
+    const player = starmapData.players.find(p => p.id === ownerid);
+    ownerLabel = `[${ownerid}] ${player.race}`;
+  }
+  const econrec = getPlanetStats(targetPlanetId, currentTurnId);
+  const econ = buildEcon(econrec);
+  const color = getColor(ownerid);
+
+  const ctx = infoBoxCtx;
+  const size = infoBoxCanvas.width;
+  ctx.clearRect(0, 0, size, size);
+  drawRect(ctx, 0, 0, size, size, color);
+
+  // owner
+  ctx.font          = `12px sans-serif`;
+
+  ctx.textAlign     = 'left';
+  ctx.textBaseline  = 'middle';
+  ctx.fillStyle     = color;
+  ctx.fillText(ownerLabel, 8, size - 10);
+
+  // temp
+  ctx.textAlign     = 'right';
+  ctx.fillStyle     = econ.tempColor;
+  ctx.fillText(`${econ.temp}°`, size - 6, 12);
+
+  const planetX = size / 2;
+  const planetY = size / 2;
+
+  drawResources(ctx, planetX, planetY, econ, false);
+  drawResources(ctx, planetX, planetY, econ, true);
+  // draw the planet
+  drawCircle(ctx, planetX, planetY, 20, econ.tempColor);
+
+  if (starbase) {
+    ctx.font          = `12px sans-serif`;
+    ctx.textAlign     = 'right';
+    ctx.textBaseline  = 'middle';
+    ctx.fillStyle     = color;
+    ctx.fillText('⨁', size - 8, 28);
+  }
+
+  if (econ.nativeRace) {
+    ctx.textAlign     = 'rights';
+    ctx.textBaseline  = 'middle';
+    ctx.fillStyle     = econ.nativeColor;
+    ctx.fillText(`${econ.government} ${econ.nativeRace}`, size - 6, size - 10);
+    drawPopn(ctx, size - 6, size - 20, econ.nativeClans, econ.nativeColor, true);
+  }
+
+  if (ownerid) {
+    drawPopn(ctx, 6, size - 20, econ.clans, color);
+  }
+
+  header.innerHTML = `<strong>P${planet.id}-${planet.name}</strong><br>`
+}
+
+/* --- end infobox functions --- */
 function updateZoomIndicator() {
   const zoomDisplay = (zoom * 100).toFixed(0) + "%";
   document.getElementById("zoom-indicator").textContent = `Zoom: ${zoomDisplay}`;
@@ -778,7 +1122,7 @@ function interpolateWrapped(a, b, range, t) {
   return a + (b - a) * t;
 }
 
-function drawGrid() {
+function drawGrid(ctx) {
   if (zoom > 30) {
     ctx.strokeStyle = 'rgba(241,241,255,0.1)';
   } else if (zoom > 20) {
@@ -873,7 +1217,7 @@ function drawMap(options = {}) {
     for (const position of positions) {
       const sx = Math.trunc(tx(position.x));
       const sy = Math.trunc(ty(position.y));
-      drawStarCluster(sx, sy, starCluster);
+      drawStarCluster(ctx, sx, sy, starCluster);
     }
   }
 
@@ -884,12 +1228,12 @@ function drawMap(options = {}) {
     for (const position of positions) {
       const sx = Math.trunc(tx(position.x));
       const sy = Math.trunc(ty(position.y));
-      drawNebula(sx, sy, nebula, ctx);
+      drawNebula(ctx, sx, sy, nebula, ctx);
     }
   }
 
   if (zoom > 15.0) {
-    drawGrid();
+    drawGrid(ctx);
   }
 
   const planetList = Object.values(starmapData.planets);
@@ -903,10 +1247,10 @@ function drawMap(options = {}) {
     for (const position of positions) {
       const sx = Math.trunc(tx(position.x));
       const sy = Math.trunc(ty(position.y));
-      drawCircle(sx, sy, scaleRadius(1, zoom), color);
+      drawCircle(ctx, sx, sy, scaleRadius(1, zoom), color);
 
       if (isStarbase(planet.id)) {
-        drawCross(sx, sy, scaleRadius(5, zoom), color);
+        drawCross(ctx, sx, sy, scaleRadius(5, zoom), color);
       }
     }
   }
@@ -964,17 +1308,17 @@ function drawMap(options = {}) {
 
       // Choose shape by SV thresholds
       if (sv >= 2000) {
-        drawCrossedRect(sx, sy, r, color);
+        drawCrossedRect(ctx, sx, sy, r, color);
       } else if (sv >= 1500) {
-        drawSlashedRect(sx, sy, r, color);
+        drawSlashedRect(ctx, sx, sy, r, color);
       } else if (sv >= 1000) {
-        drawRect(sx, sy, r, color);
-      } else if (sv >= 500) {
-        drawTriangle(sx, sy, r, color);
+        drawSquare(ctx, sx, sy, r, color);
+      } else if (ctx, sv >= 500) {
+        drawTriangle(ctx, sx, sy, r, color);
       } else if (sv >= 250) {
-        drawOpenCircle(sx, sy, scaleRadius(4, zoom), color);
+        drawOpenCircle(ctx, sx, sy, scaleRadius(4, zoom), color);
       } else {
-        drawOpenCircle(sx, sy, scaleRadius(2, zoom), color);
+        drawOpenCircle(ctx, sx, sy, scaleRadius(2, zoom), color);
       }
     }
   }
@@ -1090,6 +1434,9 @@ function resizeCanvasToMapAspect() {
     canvas.width = maxWidth;
     canvas.height = Math.floor(maxWidth / aspectRatio);
   }
+
+  infoBoxCanvas.width = 170;
+  infoBoxCanvas.height = 170;
 }
 
 window.addEventListener("resize", () => {
@@ -1494,13 +1841,14 @@ function updateNewsPanel(turnId) {
 }
 
 function updateInfoBox(turnId) {
-  const infoBox      = document.getElementById('infoBox');
-  const infoBoxContent = infoBox.querySelector('.content');
-  const planet = nearestKD(starmapTree, infoBoxPoint, 2).point;
+  const infoBox = document.getElementById('infoBox');
+  const header = document.querySelector('#infoBox .header');
+  const footer = document.querySelector('#infoBox .footer');
+  const planet = nearestKD(starmapTree, infoBoxPoint, 6).point;
   const shipMatches = closestGrouped(rangeKD(shipTrees[turnId], infoBoxPoint, 2));
 
-  let html = "";
   if (planet || shipMatches.length > 0) {
+    let html = "";
     // Ships
     shipMatches.sort((a, b) => a.point.sv - b.point.sv);
     for (const match of shipMatches) {
@@ -1512,20 +1860,18 @@ function updateInfoBox(turnId) {
       html += `<div style="color: ${color};"> ❯ S${ship.id} ${ship.name} - ${desc}${ammoText}</div>`;
     }
 
-    // Planet
     if (planet) {
-      const ownerId = planetOwner[planet.id] || 0;
-      const player = starmapData.players.find(p => p.id === ownerId);
-      const ownerName = player ? player.name : "Unowned";
-      const ownerColor = player ? player.color : "#888";
-      const star = isStarbase(planet.id) ? "⨁ " : "◯ ";
-      html += `<div style="margin-top: 4px; color: ${ownerColor};">${star} P${planet.id} ${planet.name} (${ownerName})</div>`;
+      infoBoxCanvas.style.display = '';
+      updateInfoBoxPlanet(planet.id)
     }
+
     html += `<br>x: ${infoBoxPoint.x}, y: ${infoBoxPoint.y}`;
+    footer.innerHTML = html;
   } else {
-    html = `Deep Space <br>x: ${infoBoxPoint.x}, y: ${infoBoxPoint.y}`;
+    infoBoxCanvas.style.display = 'none';
+    header.innerHTML = "<strong>Deep Space</strong>"
+    footer.innerHTML = `x: ${infoBoxPoint.x}, y: ${infoBoxPoint.y}`;
   }
-  infoBoxContent.innerHTML = html;
 }
 
 </script>
