@@ -174,7 +174,6 @@
       });
     }
 
-
     function drawGroundResources(ctx, x, y, econ) {
       const wedge   = 2 * Math.PI / 24;    // one “unit” of arc
       const baseH   = 20;                  // minimum radius

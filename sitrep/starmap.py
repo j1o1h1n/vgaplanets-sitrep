@@ -4,7 +4,7 @@ import json
 
 from typing import Any
 
-from . import vgap
+from . import vgap, minefields
 
 ALPHANUM = string.digits + string.ascii_uppercase
 
@@ -706,6 +706,28 @@ def write_econreport(game: vgap.Game, output_path: str) -> None:
     ],
     "players": [
 {players_data}
+    ]
+  }}
+}}
+"""
+    with open(output_path, "w") as f:
+        f.write(output)
+
+
+def build_minefield_report(game):
+    data = [":".join([str(rec) for rec in recs.values()]) 
+            for recs in minefields.build_minefields(game).values()]
+    return {"minefields": data}
+
+
+def write_minefield_report(game, output_path):
+    mf_report = build_minefield_report(game)
+    mf_data = ",\n".join(f"        {json.dumps(mf)}" for mf in mf_report["minefields"])
+
+    output = f"""{{
+  "minefield_report": {{
+    "minefields": [
+{mf_data}
     ]
   }}
 }}

@@ -311,7 +311,7 @@ class Game:
         if player_id is None:
             player_id = self.meta["player_id"]
         if turn_id is None:
-            turn_id = max(self._turns[player_id].keys())
+            turn_id = max(self._turns.get(player_id, {}).keys())
 
         return self._turns[player_id][turn_id]
 
@@ -613,7 +613,7 @@ class PlanetsDB(_PlanetsDB):
                 latest = game.data["turn"]
                 player_id = game.meta["player_id"]
                 missing = {
-                    t for t in range(1, latest + 1) if t not in game._turns[player_id]
+                    t for t in range(1, latest + 1) if t not in game._turns.get(player_id, [])
                 }
                 unavail = game.meta.get("unavailable_turns", [])
                 for t in unavail:
@@ -688,7 +688,7 @@ class PlanetsDBAsync(_PlanetsDB):
                 latest = game.data["turn"]
                 player_id = game.meta["player_id"]
                 missing = {
-                    t for t in range(1, latest + 1) if t not in game._turns[player_id]
+                    t for t in range(1, latest + 1) if t not in game._turns.get(player_id, [])
                 }
                 unavail = game.meta.get("unavailable_turns", [])
                 for t in unavail:
