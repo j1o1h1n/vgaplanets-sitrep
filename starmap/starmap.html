@@ -421,6 +421,7 @@ const TEMP_THRESHOLDS = [0, 1, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 75, 80
 
 const canvas = document.getElementById('starmap');
 const ctx = canvas.getContext('2d');
+
 const tooltip = document.getElementById('tooltip');
 const infoBoxCanvas = document.getElementById('infoBoxCanvas');
 const infoBoxCtx = infoBoxCanvas.getContext('2d');
@@ -646,6 +647,11 @@ function getMinefieldsForTurn(turn) {
     });
 }
 
+let webMinePattern;
+function initPatterns(ctx) {
+  webMinePattern = makeCrossHatchPattern(ctx, "#B7458333", 10);
+}
+
 function isStarbase(planetId) {
   return starbaseSet.has(planetId);
 }
@@ -670,10 +676,39 @@ function scaleRadius(base, zoom, min = 2) {
   return Math.max(min, Math.min(max, base * zoom));
 }
 
+/**
+ * Convert a world-space radius into the actual on-screen pixel radius.
+ *
+ * @param {number} r   Radius in world units.
+ * @return {number}    Radius in screen pixels.
+ */
+function trueScaleRadius(r) {
+  return r * baseScale * zoom;
+}
+
 function hexToR(h) { return parseInt((cutHex(h)).substring(0, 2), 16) }
 function hexToG(h) { return parseInt((cutHex(h)).substring(2, 4), 16) }
 function hexToB(h) { return parseInt((cutHex(h)).substring(4, 6), 16) }
 function cutHex(h) { return (h.charAt(0) == "#") ? h.substring(1, 7) : h }
+
+function makeCrossHatchPattern(baseCtx, lineColor = 'rgba(0,0,0,0.3)', size = 8) {
+  const patternCanvas = document.createElement('canvas');
+  patternCanvas.width = patternCanvas.height = size;
+  const pctx = patternCanvas.getContext('2d');
+
+  pctx.strokeStyle = lineColor;
+  pctx.lineWidth   = 1;
+  // diagonal /
+  pctx.beginPath();
+  pctx.moveTo(0, size);
+  pctx.lineTo(size, 0);
+  // diagonal \
+  pctx.moveTo(0, 0);
+  pctx.lineTo(size, size);
+  pctx.stroke();
+
+  return baseCtx.createPattern(patternCanvas, 'repeat');
+}
 
 function colorToRGBA(color, alpha) {
     if (color.startsWith("rgba("))
@@ -1278,9 +1313,29 @@ function drawMap(options = {}) {
 
   const minefields = getMinefieldsForTurn(turn);
   minefields.forEach(mf => {
-    const pos = getProjectedPositions(mf.x, mf.y)[0];
-    const sx  = tx(pos.x), sy = ty(pos.y);
-    drawCircle(ctx, sx, sy, scaleRadius(mf.radius, zoom), colorToRGBA(getColor(mf.ownerId), 0.3));
+    const [proj] = getProjectedPositions(mf.x, mf.y);
+    const sx = tx(proj.x), sy = ty(proj.y);
+    const r  = trueScaleRadius(mf.radius);
+
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, 2*Math.PI);
+
+    if (mf.type === 'web') {
+      // use cross-hatch fill
+      ctx.fillStyle = webMinePattern;
+      ctx.fill();
+      // optional: outline
+      ctx.strokeStyle = colorToRGBA(getColor(mf.ownerId), 0.7);
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+    } else {
+      // normal minefields: semi-transparent solid fill
+      ctx.fillStyle   = colorToRGBA(getColor(mf.ownerId), 0.3);
+      ctx.fill();
+      ctx.strokeStyle = colorToRGBA(getColor(mf.ownerId), 0.7);
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+    }
   });
 
   const drawnPositions = new Set();
@@ -1473,6 +1528,9 @@ window.addEventListener("resize", () => {
 });
 
 function initializeMap() {
+  // initialise patterns
+  initPatterns(ctx);
+
   // build kdtree for planets
   starmapTree = buildKDTree(starmapData.planets);
 
@@ -1900,6 +1958,26 @@ function updateInfoBox(turnId) {
     header.innerHTML = "<strong>Deep Space</strong>"
     footer.innerHTML = `x: ${infoBoxPoint.x}, y: ${infoBoxPoint.y}`;
   }
+
+  // add minefields
+  const allMines = getMinefieldsForTurn(turnId);
+  const hits = allMines
+    .filter(mf => {
+      const dx = infoBoxPoint.x - mf.x;
+      const dy = infoBoxPoint.y - mf.y;
+      return dx*dx + dy*dy <= mf.radius*mf.radius;
+    })
+    .sort((a, b) => a.id - b.id);
+
+  hits.forEach(mf => {
+    footer.innerHTML += `
+      <div class="info-minefield">
+        <div>Minefield: ${mf.id}</div>
+        <div>Mines: ${mf.mines}</div>
+        <div>Radius: ${mf.radius}</div>
+      </div>
+    `;
+  });
 }
 
 </script>

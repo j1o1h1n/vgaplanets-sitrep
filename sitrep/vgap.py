@@ -579,11 +579,13 @@ class PlanetsDB(_PlanetsDB):
         self._save_update_games(games, infos)
         return True
 
-    def update_turn(self, game_id: GAME_ID, turn_id: TURN_ID | None = None) -> bool:
+    def update_turn(self, game_id: int, turn_id: int|None=None, player_id: int|None=None) -> bool:
         """Update the turn information for the given turn from the server."""
         req_data = dict(gameid=game_id, apikey=self.account["apikey"])
         if turn_id is not None:
             req_data["turn"] = turn_id
+        if player_id is not None:
+            req_data["playerid"] = player_id
         res = requests.post("http://api.planets.nu/game/loadturn", data=req_data)
         data = res.json()
         if not data["success"]:
@@ -596,15 +598,26 @@ class PlanetsDB(_PlanetsDB):
         self.save_turn(game_id, turn_id, data["rst"])
         return True
 
-    def load_all(self, game_id: GAME_ID, save_file=None):
+    def load_all(self, game_id: int, save_file=None) -> None:
         """Get a ZIP archive containing all of the turns of a completed game, except the very last turn of a game"""
         req_data = dict(gameid=game_id, apikey=self.account["apikey"])
         res = requests.post("http://api.planets.nu/game/loadall", data=req_data)
         if save_file:
             save_file.write(res.content)
         self.save_turns(res.content)
+        # get the last turn for each player
 
-    def update(self, force_update=False):
+    def load_last_turns(self, game_id: int) -> None:
+        " because the zip archive retrieved in load_all doesn't include the last turn "
+        game = self.game(game_id)
+        assert game.data['statusname'] == 'Finished'
+        last_turn = game.data['turn']
+        players = [p for p in game.players]
+        for p in players:
+            if last_turn not in game._turns[p]:
+                self.update_turn(game_id=game.game_id, turn_id=last_turn, player_id=p)
+
+    def update(self, force_update=False) -> None:
         if not self.update_games(force_update):
             return
         cursor = self.conn.cursor()

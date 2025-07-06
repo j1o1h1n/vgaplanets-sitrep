@@ -14,6 +14,12 @@ SCOOP_MINES = re.compile(
 )
 MINEFIELD_DETONATIONS = re.compile(r"Explosions detected: (\d+)")
 
+SCAN_ENEMY = re.compile(r"closer to target mines with beam weapons.  (\d+) mines remain.")
+SCAN_OWN = re.compile(r"Mine field contains (\d+) mines.")
+
+def calc_radius(mines):
+    return min(150, int(math.trunc(math.sqrt(mines))))
+
 
 class Minefield:
     # adjust for robots
@@ -46,8 +52,11 @@ class Minefield:
         self.mines = radius * radius
         self.radius = radius
 
-    def decay(self, decay_rate=0.05):
-        self.update(math.floor(self.mines * -decay_rate) - 1)
+    def decay(self, in_nebula=False, decay_rate=0.05):
+        # TODO handle nebulas
+        # TODO handle dense minefields
+        change = -round(self.mines * decay_rate) - 1
+        self.update(change)
 
 
 def is_glory(m):
@@ -82,6 +91,11 @@ def is_sweep_mines(m):
         and "Firing beam weapons at random, wide setting to clear mines." in m["body"]
     )
 
+def is_scan_enemy_mines(m):
+    return m['messagetype'] == 19 and "We are scanning for mines.  Enemy Mine field detected" in m['body']
+
+def is_scan_our_mines(m):
+    return m['messagetype'] == 19 and "We are scanning our mines" in m['body']
 
 def is_starcluster_destroy_mines(m):
     return (
@@ -116,13 +130,11 @@ def handle_countermining(minefields):
             if rhs.web != lhs.web or rhs.ownerid == lhs.ownerid:
                 continue
             dist = distance(lhs, rhs)
+            destroyed = 0
             while lhs.mines and rhs.mines and (dist < lhs.radius + rhs.radius):
                 lhs.update(-1)
                 rhs.update(-1)
-
-
-def calc_radius(mines):
-    return int(math.trunc(math.sqrt(mines)))
+                destroyed += 1
 
 
 def build_minefield(msg):
@@ -155,22 +167,21 @@ def build_minefields(game):
     minefields_by_turn = {}
     for t in range(1, max_turn + 1):
         minefields = copy.deepcopy(minefields_by_turn.get(t - 1, {}))
-        for minefield in minefields.values():
-            minefield.decay()
 
         turn_msgs = sorted(
             [m for m in msgs.values() if m["turn"] == t], key=lambda m: m["id"]
         )
-        for msg in turn_msgs:
-            if is_lay_mines(msg):
-                minefield = build_minefield(msg)
-                minefields[minefield.mfid] = minefield
-            elif is_starcluster_destroy_mines(msg):
-                mo = STARCLUSTER_DESTROY_MINES.search(msg["body"])
-                mfid = msg["target"]
-                radius = int(mo.group(1))
-                minefield = minefields[mfid].set_radius(radius)
-            elif is_sweep_mines(msg):
+        # lay, sweep/scoop, decay, destroy
+        lay = [msg for msg in turn_msgs if is_lay_mines(msg)]
+        sweep = [msg for msg in turn_msgs if is_sweep_mines(msg) or is_scoop_mines(msg) or is_scan_enemy_mines(msg) or is_scan_our_mines(msg)]
+        sc_destroy = [msg for msg in turn_msgs if is_starcluster_destroy_mines(msg)]
+
+        for msg in lay:
+            minefield = build_minefield(msg)
+            minefields[minefield.mfid] = minefield
+
+        for msg in sweep:
+            if is_sweep_mines(msg):
                 mo = SWEEP_MINES.search(msg["body"])
                 newmines = int(mo.group(1))
                 mfid = msg["target"]
@@ -180,8 +191,28 @@ def build_minefields(game):
                 mfid = int(mo.group(1))
                 scooped = int(mo.group(2))
                 minefields[mfid].update(-scooped)
+            elif is_scan_enemy_mines(msg):
+                mo = SCAN_ENEMY.search(msg['body'])
+                mines = int(mo.group(1))
+                mfid = msg['target']
+                minefields[mfid].set_mines(mines)
+            elif is_scan_our_mines(msg):
+                mo = SCAN_OWN.search(msg['body'])
+                mines = int(mo.group(1))
+                mfid = msg['target']
+                minefields[mfid].set_mines(mines)
 
-        handle_countermining(minefields)
+        # decay
+        for minefield in minefields.values():
+            in_nebula = False
+            minefield.decay(in_nebula)
+
+        # destroy
+        for msg in sc_destroy:
+            mo = STARCLUSTER_DESTROY_MINES.search(msg["body"])
+            mfid = msg["target"]
+            radius = int(mo.group(1))
+            minefield = minefields[mfid].set_radius(radius)
 
         minefields_by_turn[t] = {k: mf for k, mf in minefields.items() if mf.mines > 0}
 
