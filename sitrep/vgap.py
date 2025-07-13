@@ -501,22 +501,50 @@ class _PlanetsDB:
     def save_turns(self, content: bytes):
         """Save turn data in zipped archive from loadall"""
         recs = []
+        game_dict = None
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
             # List all file names in the archive
             for filename in zf.namelist():
-                if filename.endswith(".trn"):
-                    with zf.open(filename) as f:
-                        data = json.load(f)
-                        game_id = data["game"]["id"]
-                        player_id = data["player"]["id"]
-                        turn_id = data["game"]["turn"]
-                        recs.append((game_id, player_id, turn_id, json.dumps(data)))
+                try:
+                    if filename.endswith(".trn"):
+                        with zf.open(filename) as f:
+                            data = json.load(f)
+                            game_dict = data["game"]
+                            game_id = game_dict["id"]
+                            game_name = game_dict["name"]
+                            player_id = data["player"]["id"]
+                            turn_id = game_dict["turn"]
+                            recs.append((game_id, player_id, turn_id, json.dumps(data)))
+                except json.JSONDecodeError as jsex:
+                    print(f"JSON error on {filename}: {jsex}")
         cursor = self.conn.cursor()
         try:
             cursor.executemany(INSERT_TURN, recs)
             self.conn.commit()
         finally:
             cursor.close()
+
+        info = self.update_info(game_dict["id"])
+        self._save_update_games([info["game"]], [info])
+
+    def update_games(self, force_update=False) -> bool:
+        if not force_update and not self.requires_update():
+            return False
+
+        username = self.account["username"]
+        res = requests.get(
+            f"http://api.planets.nu/games/list?username={username}&scope=1&status=2,3"
+        )
+        games = res.json()
+
+        infos = []
+        for game in games:
+            game_id = game["id"]
+            infos.append(self.update_info(game_id))
+
+        self._save_update_games(games, infos)
+        return True
+
 
     def _save_update_games(self, games: list[dict], infos: list[dict]) -> None:
         """Insert or update games with accompanying metadata and info"""
@@ -535,7 +563,7 @@ class _PlanetsDB:
                 player = query_one(
                     info["players"], lambda p: p["username"] == self.account["username"]
                 )
-                player_id = player["id"]
+                player_id = player["id"] if player else 1
 
                 meta = existing_meta.get(game_id, {})
                 meta["last_updated"] = now
@@ -606,6 +634,14 @@ class PlanetsDB(_PlanetsDB):
             save_file.write(res.content)
         self.save_turns(res.content)
         # get the last turn for each player
+        self.load_last_turns(game_id)
+
+    def load_all_from_archive(self, game_id: int, archive_file) -> None:
+        """Get a ZIP archive containing all of the turns of a completed game, except the very last turn of a game"""
+        content = open(archive_file, 'rb').read()
+        self.save_turns(content)
+        # get the last turn for each player
+        self.load_last_turns(game_id)
 
     def load_last_turns(self, game_id: int) -> None:
         " because the zip archive retrieved in load_all doesn't include the last turn "

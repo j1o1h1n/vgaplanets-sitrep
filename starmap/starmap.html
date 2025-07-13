@@ -834,7 +834,8 @@ function drawNebula(ctx, x, y, neb, ctx) {
 }
 
 function drawStarCluster(ctx, x, y, star) {
-  var rad = star.radius * zoom;
+  // var rad = star.radius * zoom;
+  var rad = trueScaleRadius(star.radius);
 
   var color = "#FF0000";
   if (star.temp > 3000 && star.temp <= 6000)
@@ -848,16 +849,17 @@ function drawStarCluster(ctx, x, y, star) {
 
   //radiation
   var opacity = Math.max(0.4 * star.temp / 65000, 0.2);
-  var edge = 0.01;
+  var edge = 0.06;
 
-  var effectRad = Math.sqrt(star.mass) * zoom;
+  // var effectRad = Math.sqrt(star.mass) * zoom;
+  var effectRad = trueScaleRadius(Math.sqrt(star.mass));
   var grad = ctx.createRadialGradient(x, y, 0, x, y, effectRad);
   grad.addColorStop(0, colorToRGBA(color, opacity));
   grad.addColorStop(1, colorToRGBA(color, edge));
   ctx.fillStyle = grad;
 
   ctx.beginPath();
-  ctx.arc(x, y, effectRad * .67, 0, Math.PI * 2, false);
+  ctx.arc(x, y, effectRad, 0, Math.PI * 2, false);
   ctx.closePath();
   ctx.fill();
 
@@ -868,12 +870,12 @@ function drawStarCluster(ctx, x, y, star) {
   ctx.fillStyle = grad;
 
   ctx.beginPath();
-  ctx.arc(x, y, rad * .67, 0, Math.PI * 2, false);
+  ctx.arc(x, y, rad, 0, Math.PI * 2, false);
   ctx.closePath();
   ctx.fill();
 
   //diamond
-  var halfRad = rad / 4 * .67;
+  var halfRad = rad / 4;
   var grad = ctx.createRadialGradient(x, y, 0, x, y, halfRad);
   grad.addColorStop(0, colorToRGBA(color, 1));
   grad.addColorStop(1, colorToRGBA(color, 0));
