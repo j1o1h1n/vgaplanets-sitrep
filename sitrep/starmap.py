@@ -100,7 +100,8 @@ FIGHTER_BV = 100
 # message types
 BATTLE, EXPLOSION = 100, 101
 
-PLAYER_COLORS = ['#E8705F',
+PLAYER_COLORS = [
+ '#E8705F',
  '#EC8B49',
  '#DFB431',
  '#A0AF54',
@@ -109,13 +110,12 @@ PLAYER_COLORS = ['#E8705F',
  '#A699D0',
  '#E47DA8',
  '#FFCABB',
- '#FED3AF',
- '#F6E2A0',
- '#DDE2B2',
- '#BFE8D9',
- '#C6DDE8',
- '#E2D9E9',
- '#FCCFDA']
+ '#AF3029',
+ '#AD8301',
+ '#66800B',
+ '#24837B',
+ '#205EA6',
+ '#5E409D']
 
 
 def get_battle_value(ship: dict[str, Any], hull: dict[str, Any]) -> tuple[int, int]:
@@ -524,17 +524,11 @@ def build_messages_for_turn(
             left_name, right_name = vcr["left"]["name"], vcr["right"]["name"]
             battle_type = vcr["battletype"]  # 1 => rhs is planet
 
-            if next_vcr:
-                # if there is a next vcr, this is a ship to ship battle
-                left_survives = match_ship(left_id, left_owner_id, next_vcr)
-                right_survives = match_ship(right_id, right_owner_id, next_vcr)
+            left_survives = check_owner(turns, left_owner_id, left_id)
+            if battle_type:
+                right_survives = check_owner(turns, right_owner_id, right_id, False)
             else:
-                # else the right hand side might be a planet
-                left_survives = check_owner(turns, left_owner_id, left_id)
-                if battle_type:
-                    right_survives = check_owner(turns, right_owner_id, right_id, False)
-                else:
-                    right_survives = check_owner(turns, right_owner_id, right_id)
+                right_survives = check_owner(turns, right_owner_id, right_id)
 
             if not left_survives:
                 expected.append((left_name, left_owner_id))
