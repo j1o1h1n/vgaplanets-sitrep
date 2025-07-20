@@ -13,7 +13,7 @@ LAY_MINEFIELD = re.compile(
     r"now contains (\d+) mine units and is (\d+) light years in radius"
 )
 STARCLUSTER_DESTROY_MINES = re.compile(
-    r"has come in contact with the .* Star Cluster and has been partly destroyed. It is now (\d+) light years accross"
+    r"has come in contact with the .* (Star Cluster|Debris Disk) and has been partly destroyed. It is now (\d+) light years accross"
 )
 SWEEP_MINES = re.compile(r"(\d+) mines remain.")
 SCOOP_MINES = re.compile(
@@ -52,18 +52,21 @@ class Minefield:
         return f"<{t}Minefield #{self.mfid} @ {self.x},{self.y}: owner={self.ownerid}, mines={self.mines}, radius={self.radius}>"
 
     def __str__(self):
-        t = "Mr" if self.robot else "Mw" if self.web else "M"
+        t = "W" if self.web else "M"
         return f"{t}{self.mfid},{self.x},{self.y},{self.ownerid},{self.mines},{self.radius}"
 
     def update(self, delta: int):
         self.mines = max(0, self.mines + delta)
+        self.radius = calc_radius(self.mines)
+
+    def scoop(self, scooped: int):
         c = 4 if self.robot else 1
-        self.radius = calc_radius(self.mines * c)
+        self.mines = max(0, self.mines - (scooped * c))
+        self.radius = calc_radius(self.mines)
 
     def set_mines(self, mines: int):
         self.mines = mines
-        c = 4 if self.robot else 1
-        self.radius = calc_radius(self.mines * c)
+        self.radius = calc_radius(self.mines)
 
     def set_radius(self, radius: int):
         c = 4 if self.robot else 1
@@ -261,11 +264,10 @@ def build_minefields(game):
         for msg in sc_destroy:
             mo = STARCLUSTER_DESTROY_MINES.search(msg["body"])
             mfid = msg["target"]
-            radius = int(mo.group(1))
+            radius = int(mo.group(2))
             minefields[mfid].set_radius(radius)
             if t in DEBUG_TURNS:
                 print(f"sc_destroy: {msg} -> {minefields[mfid]}")
-
         scanned = set()
         for msg in sweep:
             player_id = msg["ownerid"]
@@ -282,7 +284,7 @@ def build_minefields(game):
                     mo = SCOOP_MINES.search(msg["body"])
                     mfid = int(mo.group(1))
                     scooped = int(mo.group(2))
-                    minefields[mfid].update(-scooped)
+                    minefields[mfid].scoop(scooped)
                     scanned.add(mfid)
                     if t in DEBUG_TURNS and player_id in DEBUG_PLAYERS:
                         print("scoops", msg)
