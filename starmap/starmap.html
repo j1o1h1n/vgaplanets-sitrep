@@ -315,11 +315,11 @@ const params = new URLSearchParams(window.location.search);
 const paramGameId = params.get('gameid') || '';
 
 Promise.all([
-  fetch(`starmap-${paramGameId}.json`).then(res => res.json()),
-  fetch(`shiplist-${paramGameId}.json`).then(res => res.json()),
-  fetch(`messagelist-${paramGameId}.json`).then(res => res.json()),
-  fetch(`econreport-${paramGameId}.json`).then(res => res.json()),
-  fetch(`minefields-${paramGameId}.json`).then(res => res.json())
+  fetch(`games/${paramGameId}/starmap-${paramGameId}.json`).then(res => res.json()),
+  fetch(`games/${paramGameId}/shiplist-${paramGameId}.json`).then(res => res.json()),
+  fetch(`games/${paramGameId}/messagelist-${paramGameId}.json`).then(res => res.json()),
+  fetch(`games/${paramGameId}/econreport-${paramGameId}.json`).then(res => res.json()),
+  fetch(`games/${paramGameId}/minefields-${paramGameId}.json`).then(res => res.json())
 ])
   .then(([starmapData, shiplistData, messagelistData, econreportData, minefieldsData]) => {
     window.starmapData = starmapData;
