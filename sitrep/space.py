@@ -252,42 +252,6 @@ def x_warp_well_coords(p):
         yield {"x": x + dx, "y": y + dy}
 
 
-def build_neighbours(turn: "vgap.Turn", max_dist: int | float = 81) -> Neighbours:
-    "Returns a dict of neighbours for each planet, with distance"
-    spherical_map = SphericalMapSettings(turn)
-    kdtree = build_kd_tree(turn.planets())
-    planets = {p["id"]: p for p in turn.planets()}
-
-    neighbours: Neighbours = {}
-    for root_id in planets:
-        root_planet = planets[root_id]
-        s_coords = [xy for xy in spherical_map.project_coords(root_planet)]
-
-        # get a shortlist of candidates
-        candidates: dict[int, tuple[dict, float]] = {}
-        for xy in s_coords:
-            node = KDNode(xy)
-            for d, p in range_search(kdtree, node, max_dist + 5):
-                p_id = p["id"]
-                if p_id == root_id:
-                    continue
-                if p_id not in candidates or candidates[p_id][1] > d:
-                    candidates[p_id] = (xy, d)
-
-        # check whether the warpwell is reachable for each
-        neighbours[root_id] = []
-        for candidate_id in candidates:
-            target = planets[candidate_id]
-            xy = candidates[candidate_id][0]
-            for w_coord in x_warp_well_coords(target):
-                d = distance(xy, w_coord)
-                if d < max_dist + 0.5:
-                    neighbours[root_id].append((d, candidate_id))
-                    break
-        neighbours[root_id] = sorted(neighbours[root_id])
-    return neighbours
-
-
 def build_cliques(neighbours: Neighbours) -> Clique:
     "Return list of planets connected by hops of max_dist, with the first clique the set of isolated planets"
     cliques: Clique = [set()]
@@ -333,60 +297,20 @@ def shortest_paths(cliques: Clique, neighbours: Neighbours) -> ShortestPaths:
     return paths
 
 
-# class SphericalMapSettings:
-
-#     # FIXME verify this
-#     magic_offset = 149
-#     magic_padding = 20
-
-#     def __init__(self, turn):
-#         settings = turn.data["settings"]
-#         mapshape = settings["mapshape"]
-#         mapwidth = settings["mapwidth"]
-#         mapheight = settings["mapheight"]
-#         if mapshape != 1:
-#             raise Exception("map is not spherical")
-#         true_width = mapwidth + self.magic_padding
-#         true_height = mapheight + self.magic_padding
-#         self.bottom_left = Point(
-#             true_width + self.magic_offset, true_height + self.magic_offset
-#         )
-#         self.top_right = Point(
-#             self.bottom_left[0] + true_width, self.bottom_left[1] + true_height
-#         )
-#         self.map_width = self.top_right[0] - self.bottom_left[0]
-#         self.map_height = self.top_right[1] - self.bottom_left[1]
-
-#     def project_coords(self, p: dict):
-#         "returns the original coordinate and the projection into the four mirrors"
-#         x, y = p["x"], p["y"]
-#         offsets = [
-#             (0, 0),
-#             (self.map_width, 0),
-#             (-self.map_width, 0),
-#             (0, self.map_height),
-#             (0, -self.map_height),
-#         ]
-#         for dx, dy in offsets:
-#             yield {"x": x + dx, "y": y + dy}
-
-#     def __repr__(self):
-#         return f"<SphericalMapSettings bl: {self.bottom_left}, tr: {self.top_right}>"
-
-
-# TBC
-
-
 class SphericalMapSettings:
 
     magic_padding = 20
 
+    @staticmethod
+    def is_spherical(turn: "vgap.Turn") -> bool:
+        return bool(turn.data["settings"]["sphere"])
+
     def __init__(self, turn):
         settings = turn.data["settings"]
-        spherical = turn.data['settings']['sphere']
+        spherical = turn.data["settings"]["sphere"]
         mapwidth = settings["mapwidth"]
         mapheight = settings["mapheight"]
-        if spherical != 1:
+        if not spherical:
             raise Exception("map is not spherical")
         true_width = mapwidth + self.magic_padding
         true_height = mapheight + self.magic_padding
@@ -427,14 +351,57 @@ class SphericalMapSettings:
         return f"<SphericalMapSettings bl: {self.bottom_left}, tr: {self.top_right}, w: {self.map_width}, h: {self.map_height}>"
 
 
+def build_neighbours(
+    turn: "vgap.Turn",
+    spherical_map: None | SphericalMapSettings,
+    max_dist: int | float = 81,
+) -> Neighbours:
+    "Returns a dict of neighbours for each planet, with distance"
+    kdtree = build_kd_tree(turn.planets())
+    planets = {p["id"]: p for p in turn.planets()}
+
+    neighbours: Neighbours = {}
+    for root_id in planets:
+        root_planet = planets[root_id]
+        if spherical_map:
+            s_coords = [xy for xy in spherical_map.project_coords(root_planet)]
+        else:
+            s_coords = [{"x": root_planet["x"], "y": root_planet["y"]}]
+
+        # get a shortlist of candidates
+        candidates: dict[int, tuple[dict, float]] = {}
+        for xy in s_coords:
+            node = KDNode(xy)
+            for d, p in range_search(kdtree, node, max_dist + 5):
+                p_id = p["id"]
+                if p_id == root_id:
+                    continue
+                if p_id not in candidates or candidates[p_id][1] > d:
+                    candidates[p_id] = (xy, d)
+
+        # check whether the warpwell is reachable for each
+        neighbours[root_id] = []
+        for candidate_id in candidates:
+            target = planets[candidate_id]
+            xy = candidates[candidate_id][0]
+            for w_coord in x_warp_well_coords(target):
+                d = distance(xy, w_coord)
+                if d < max_dist + 0.5:
+                    neighbours[root_id].append((d, candidate_id))
+                    break
+        neighbours[root_id] = sorted(neighbours[root_id])
+    return neighbours
+
+
 class Cluster:
 
     def __init__(self, turn: "vgap.Turn"):
         self.turn = turn
-        # FIXME handle non-spherical map
-        self.spherical_map = SphericalMapSettings(turn)
+        self.spherical_map: None | SphericalMapSettings = None
+        if SphericalMapSettings.is_spherical(turn):
+            self.spherical_map = SphericalMapSettings(turn)
         self.kdtree = build_kd_tree(turn.planets())
-        self.neighbours = build_neighbours(self.turn)
+        self.neighbours = build_neighbours(self.turn, self.spherical_map)
         self.cliques = build_cliques(self.neighbours)
         self.paths = shortest_paths(self.cliques, self.neighbours)
 

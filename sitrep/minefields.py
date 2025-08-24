@@ -4,8 +4,8 @@ import copy
 import typing
 import collections
 
-DEBUG_TURNS = {}
-DEBUG_PLAYERS = {}
+DEBUG_TURNS: dict = {}
+DEBUG_PLAYERS: dict = {}
 
 MISSION_MINE_SWEEP = 1
 
@@ -21,7 +21,9 @@ SCOOP_MINES = re.compile(
 )
 MINEFIELD_DETONATIONS = re.compile(r"Explosions detected: (\d+)")
 
-SCAN_ENEMY = re.compile(r"closer to target mines with beam weapons.  (\d+) mines remain.")
+SCAN_ENEMY = re.compile(
+    r"closer to target mines with beam weapons.  (\d+) mines remain."
+)
 SCAN_OWN = re.compile(r"Mine field contains (\d+) mines.")
 
 
@@ -36,7 +38,16 @@ class Point(typing.NamedTuple):
 
 class Minefield:
     # TODO adjust for robots
-    def __init__(self, mfid: int, ownerid: int, x: int, y: int, web: bool, robot: bool, mines: int):
+    def __init__(
+        self,
+        mfid: int,
+        ownerid: int,
+        x: int,
+        y: int,
+        web: bool,
+        robot: bool,
+        mines: int,
+    ):
         self.mfid = mfid
         self.ownerid = ownerid
         self.x = x
@@ -112,11 +123,17 @@ def is_sweep_mines(m):
         and "Firing beam weapons at random, wide setting to clear mines." in m["body"]
     )
 
+
 def is_scan_enemy_mines(m):
-    return m['messagetype'] == 19 and "We are scanning for mines.  Enemy Mine field detected" in m['body']
+    return (
+        m["messagetype"] == 19
+        and "We are scanning for mines.  Enemy Mine field detected" in m["body"]
+    )
+
 
 def is_scan_our_mines(m):
-    return m['messagetype'] == 19 and "We are scanning our mines" in m['body']
+    return m["messagetype"] == 19 and "We are scanning our mines" in m["body"]
+
 
 def is_starcluster_destroy_mines(m):
     return (
@@ -156,14 +173,19 @@ def handle_countermining(minefields, turn_id=None):
                 lhs.update(-1)
                 rhs.update(-1)
                 destroyed += 1
-            if destroyed and turn_id in DEBUG_TURNS and (lhs.ownerid in DEBUG_PLAYERS or rhs.ownerid in DEBUG_PLAYERS):
+            if (
+                destroyed
+                and turn_id in DEBUG_TURNS
+                and (lhs.ownerid in DEBUG_PLAYERS or rhs.ownerid in DEBUG_PLAYERS)
+            ):
                 print(f"countermine: {lhs} vs {rhs}: {destroyed} explosions")
+
 
 def handle_countermining_simple(minefields):
     arr = list(sorted(minefields.values(), key=lambda mf: mf.mfid))
     for i in range(len(arr)):
         lhs = arr[i]
-        for rhs in arr[i + 1:]:
+        for rhs in arr[i + 1 :]:
             if not lhs.mines:
                 break
             if not rhs.mines:
@@ -213,16 +235,20 @@ def sanity_check_destroy(game, turn_id, minefields, scanned):
     sweeps = {}
     for player_id in game.players:
         turn = game.turns(player_id)[prev_turn]
-        sweeps.update({ship['id']: Point(ship['x'], ship['y']) for ship 
-                      in turn.ships(player_id) 
-                      if ship["mission"] == MISSION_MINE_SWEEP and ship["neutronium"] > 0})
+        sweeps.update(
+            {
+                ship["id"]: Point(ship["x"], ship["y"])
+                for ship in turn.ships(player_id)
+                if ship["mission"] == MISSION_MINE_SWEEP and ship["neutronium"] > 0
+            }
+        )
 
     known = set(minefields.keys())
     not_scanned = known - scanned
     should_have_scanned = collections.defaultdict(int)
     for mfid in not_scanned:
         mf = minefields[mfid]
-        for s, p1 in sweeps.items():
+        for _, p1 in sweeps.items():
             d = distance(mf, p1)
             if d < 200 + mf.radius:
                 should_have_scanned[mf.mfid] += 1
@@ -230,9 +256,13 @@ def sanity_check_destroy(game, turn_id, minefields, scanned):
                 break
 
     # if it was missed by two or more ships, remove
-    should_have_scanned = {mfid for mfid in should_have_scanned if should_have_scanned[mfid] > 1}
+    should_have_scanned = {
+        mfid for mfid in should_have_scanned if should_have_scanned[mfid] > 1
+    }
     if should_have_scanned:
-        print(f"sanity_check_destroy: turn={turn_id}: {list(should_have_scanned.keys())}")
+        print(
+            f"sanity_check_destroy: turn={turn_id}: {list(should_have_scanned.keys())}"
+        )
     for mfid in should_have_scanned:
         del minefields[mfid]
 
@@ -241,7 +271,9 @@ def build_minefields(game):
     msgs = build_msgs(game)
     max_turn = max(m["turn"] for m in msgs.values())
     minefields_by_turn = {}
-    robot_players = {p: game.players[p].short_name == "The Robots" for p in game.players}
+    robot_players = {
+        p: game.players[p].short_name == "The Robots" for p in game.players
+    }
     for t in range(1, max_turn + 1):
         minefields = copy.deepcopy(minefields_by_turn.get(t - 1, {}))
 
@@ -250,14 +282,21 @@ def build_minefields(game):
         )
         # lay, sweep/scoop, decay, destroy
         lay = [msg for msg in turn_msgs if is_lay_mines(msg)]
-        sweep = [msg for msg in turn_msgs if is_sweep_mines(msg) or is_scoop_mines(msg) or is_scan_enemy_mines(msg) or is_scan_our_mines(msg)]
+        sweep = [
+            msg
+            for msg in turn_msgs
+            if is_sweep_mines(msg)
+            or is_scoop_mines(msg)
+            or is_scan_enemy_mines(msg)
+            or is_scan_our_mines(msg)
+        ]
         sc_destroy = [msg for msg in turn_msgs if is_starcluster_destroy_mines(msg)]
 
         for msg in lay:
-            is_robot = robot_players[msg['ownerid']]
+            is_robot = robot_players[msg["ownerid"]]
             minefield = build_minefield(msg, is_robot)
             minefields[minefield.mfid] = minefield
-            if t in DEBUG_TURNS and msg['ownerid'] in DEBUG_PLAYERS:
+            if t in DEBUG_TURNS and msg["ownerid"] in DEBUG_PLAYERS:
                 print(f"lay {msg} -> {minefield}")
 
         # starcluster destroy
@@ -289,29 +328,33 @@ def build_minefields(game):
                     if t in DEBUG_TURNS and player_id in DEBUG_PLAYERS:
                         print("scoops", msg)
                 elif is_scan_enemy_mines(msg):
-                    mo = SCAN_ENEMY.search(msg['body'])
+                    mo = SCAN_ENEMY.search(msg["body"])
                     mines = int(mo.group(1))
-                    mfid = msg['target']
+                    mfid = msg["target"]
                     minefields[mfid].set_mines(mines)
                     scanned.add(mfid)
                 elif is_scan_our_mines(msg):
-                    mo = SCAN_OWN.search(msg['body'])
+                    mo = SCAN_OWN.search(msg["body"])
                     mines = int(mo.group(1))
-                    mfid = msg['target']
+                    mfid = msg["target"]
                     minefields[mfid].set_mines(mines)
                     scanned.add(mfid)
             except KeyError:
                 if t in DEBUG_TURNS and player_id in DEBUG_PLAYERS:
                     if is_scan_enemy_mines(msg):
-                        mo = SCAN_ENEMY.search(msg['body'])
+                        mo = SCAN_ENEMY.search(msg["body"])
                         mines = int(mo.group(1))
-                        mfid = msg['target']
-                        print(f"Unexpected minefield (enemy): {msg['headline']} scans {mfid}/{mines} at {msg['x']},{msg['y']}")
+                        mfid = msg["target"]
+                        print(
+                            f"Unexpected minefield (enemy): {msg['headline']} scans {mfid}/{mines} at {msg['x']},{msg['y']}"
+                        )
                     elif is_scan_our_mines(msg):
-                        mo = SCAN_OWN.search(msg['body'])
+                        mo = SCAN_OWN.search(msg["body"])
                         mines = int(mo.group(1))
-                        mfid = msg['target']
-                        print(f"Unexpected minefield (own): {msg['headline']} scans {mfid}/{mines} at {msg['x']},{msg['y']}")
+                        mfid = msg["target"]
+                        print(
+                            f"Unexpected minefield (own): {msg['headline']} scans {mfid}/{mines} at {msg['x']},{msg['y']}"
+                        )
                     else:
                         print(f"KeyError: turn {t}: {msg}")
                 pass

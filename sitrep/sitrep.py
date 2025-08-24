@@ -437,8 +437,15 @@ class SituationReport(App):
         else:
             self.games = list(self.planets_db.games())
             # sort by status and last update date
-            self.games.sort(key=lambda g: (-int(g.data['status']), 
-                                           datetime.datetime.strptime(g.data['lasthostdate'], '%m/%d/%Y %I:%M:%S %p')), reverse=True)
+            self.games.sort(
+                key=lambda g: (
+                    -int(g.data["status"]),
+                    datetime.datetime.strptime(
+                        g.data["lasthostdate"], "%m/%d/%Y %I:%M:%S %p"
+                    ),
+                ),
+                reverse=True,
+            )
             self.choose_game(self.settings["state"].get("game_id", None))
             if self.game:
                 self.push_screen(ReportScreen(self.game))
@@ -496,15 +503,22 @@ class SituationReport(App):
         await self.planets_db.update()
         self.games = list(self.planets_db.games())
         # sort by status and last update date
-        self.games.sort(key=lambda g: (-int(g.data['status']), 
-                                       datetime.datetime.strptime(g.data['lasthostdate'], '%m/%d/%Y %I:%M:%S %p')), reverse=True)
+        self.games.sort(
+            key=lambda g: (
+                -int(g.data["status"]),
+                datetime.datetime.strptime(
+                    g.data["lasthostdate"], "%m/%d/%Y %I:%M:%S %p"
+                ),
+            ),
+            reverse=True,
+        )
         self.push_screen(ChooseGameScreen(self.games))
 
     async def handle_refresh_game(self, game_id):
         "refresh game data, call from worker"
         await self.planets_db.update(force_update=True)
-
-        turn_id = self.game.turn().turn_id
+        game = query_one(self.games, lambda g: g.game_id == game_id)
+        turn_id = game.turn().turn_id
         await planets_db.update_turn(game_id, turn_id)
 
         self.games = list(self.planets_db.games())

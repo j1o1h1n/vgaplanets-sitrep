@@ -101,21 +101,47 @@ FIGHTER_BV = 100
 BATTLE, EXPLOSION = 100, 101
 
 PLAYER_COLORS = [
- '#E8705F',
- '#EC8B49',
- '#DFB431',
- '#A0AF54',
- '#5ABDAC',
- '#66A0C8',
- '#A699D0',
- '#E47DA8',
- '#FFCABB',
- '#AF3029',
- '#AD8301',
- '#66800B',
- '#24837B',
- '#205EA6',
- '#5E409D']
+    "#E8705F",
+    "#EC8B49",
+    "#DFB431",
+    "#A0AF54",
+    "#5ABDAC",
+    "#66A0C8",
+    "#A699D0",
+    "#E47DA8",
+    "#FFCABB",
+    "#AF3029",
+    "#AD8301",
+    "#66800B",
+    "#24837B",
+    "#205EA6",
+    "#5E409D",
+]
+
+
+def calc_mass(ship, turn, template):
+    # {'beamid': 7, 'torpedoid': 0, 'beams': 10, 'ammo': 108, 'bays': 10, 'torps': 0}
+    def get(obj, tmpl, key):
+        val = obj.get(key, 0)
+        if not val:
+            val = tmpl.get(key, 0)
+        return val
+
+    hulls = {obj["id"]: obj for obj in turn.data["hulls"]}
+    beamlib = {obj["id"]: obj for obj in turn.data["beams"]}
+    torpedolib = {obj["id"]: obj for obj in turn.data["torpedos"]}
+
+    hull = hulls[ship["hullid"]]
+    mass = hull.get("mass", 0)
+    beams = ship.get("beams", 0)
+    torps = ship.get("torpedoes", 0)
+    if beams:
+        beamid = get(ship, template, "beamid")
+        mass += beams * beamlib[beamid]["mass"]
+    if torps:
+        torpedoid = get(ship, template, "torpedoid")
+        mass += torps * torpedolib[torpedoid]["mass"]
+    return mass
 
 
 def get_battle_value(ship: dict[str, Any], hull: dict[str, Any]) -> tuple[int, int]:
@@ -129,7 +155,7 @@ def get_battle_value(ship: dict[str, Any], hull: dict[str, Any]) -> tuple[int, i
         + (ev * 10)
     )
 
-    return bv, hull["mass"] + (ev * 10)
+    return max(1, bv), hull["mass"] + (ev * 10)
 
 
 def short_hull_name(hull: dict[str, Any]) -> str:
@@ -155,7 +181,6 @@ def ship_desc(
     beam_id: int,
     launchers: int,
     launcher_id: int,
-    ammo: int,
 ) -> str:
     result = short_hull_name(hull)
 
@@ -188,7 +213,6 @@ def build_ship_desc(ship: dict[str, Any], hulls: dict[int, dict[str, Any]]) -> s
         int(ship["beamid"]),
         int(ship["torps"]),
         int(ship["torpedoid"]),
-        int(ship["ammo"]),
     )
     return desc
 
@@ -518,7 +542,6 @@ def build_messages_for_turn(
         loc_vcrs = vcrs_by_loc[loc]
         for idx in range(len(loc_vcrs)):
             vcr = loc_vcrs[idx]
-            next_vcr = loc_vcrs[idx + 1] if idx + 1 < len(loc_vcrs) else None
             left_owner_id, right_owner_id = vcr["leftownerid"], vcr["rightownerid"]
             left_id, right_id = vcr["left"]["objectid"], vcr["right"]["objectid"]
             left_name, right_name = vcr["left"]["name"], vcr["right"]["name"]
@@ -593,21 +616,107 @@ def write_messagelist(game: vgap.Game, output_path: str) -> None:
         f.write(output)
 
 
-CLAN_THRESHOLDS = [0, 1, 2, 5, 
-                   10, 20, 50, 60, 70, 80, 90,
-                   100, 200, 500, 600, 700, 800, 900,
-                   1_000, 2_000, 5_000, 6_000, 7_000, 8_000, 9_000,
-                   10_000, 20_000, 30_000, 40_000, 50_000,
-                   60_000, 70_000, 80_000, 90_000, 100_000,
-                   200_000]
+CLAN_THRESHOLDS = [
+    0,
+    1,
+    2,
+    5,
+    10,
+    20,
+    50,
+    60,
+    70,
+    80,
+    90,
+    100,
+    200,
+    500,
+    600,
+    700,
+    800,
+    900,
+    1_000,
+    2_000,
+    5_000,
+    6_000,
+    7_000,
+    8_000,
+    9_000,
+    10_000,
+    20_000,
+    30_000,
+    40_000,
+    50_000,
+    60_000,
+    70_000,
+    80_000,
+    90_000,
+    100_000,
+    200_000,
+]
 
-THRESHOLDS = [0, 1, 2, 5,
-              10, 20, 30, 40, 50, 60, 70, 80, 90,
-              100, 200, 300, 400, 500, 600, 700, 800, 900,
-              1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000,
-              10_000, 20_000, 30_000, 40_000, 50_000]
+THRESHOLDS = [
+    0,
+    1,
+    2,
+    5,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90,
+    100,
+    200,
+    300,
+    400,
+    500,
+    600,
+    700,
+    800,
+    900,
+    1000,
+    2000,
+    3000,
+    4000,
+    5000,
+    6000,
+    7000,
+    8000,
+    9000,
+    10_000,
+    20_000,
+    30_000,
+    40_000,
+    50_000,
+]
 
-TEMP_THRESHOLDS = [0, 1, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 75, 80, 85, 90, 95, 99, 100]
+TEMP_THRESHOLDS = [
+    0,
+    1,
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    35,
+    40,
+    50,
+    60,
+    70,
+    75,
+    80,
+    85,
+    90,
+    95,
+    99,
+    100,
+]
+
 
 def bucket_value(value: int, thresholds) -> str:
     if value <= 0:
@@ -623,13 +732,22 @@ def bucket_value(value: int, thresholds) -> str:
 
 
 def build_planet_report(planet):
-    rec = [bucket_value(planet['temp'], TEMP_THRESHOLDS)]
-    rec.append(str(planet['nativetype']))
-    rec.append(str(planet['nativegovernment']))
-    for key in ['nativeclans', 'clans']:
+    rec = [bucket_value(planet["temp"], TEMP_THRESHOLDS)]
+    rec.append(str(planet["nativetype"]))
+    rec.append(str(planet["nativegovernment"]))
+    for key in ["nativeclans", "clans"]:
         rec.append(bucket_value(planet[key], CLAN_THRESHOLDS))
-    rec.append(bucket_value(planet['megacredits'] + planet['supplies'], THRESHOLDS))
-    for key in ['neutronium', 'molybdenum', 'duranium', 'tritanium', 'groundneutronium', 'groundmolybdenum', 'groundduranium', 'groundtritanium']:
+    rec.append(bucket_value(planet["megacredits"] + planet["supplies"], THRESHOLDS))
+    for key in [
+        "neutronium",
+        "molybdenum",
+        "duranium",
+        "tritanium",
+        "groundneutronium",
+        "groundmolybdenum",
+        "groundduranium",
+        "groundtritanium",
+    ]:
         rec.append(bucket_value(planet[key], THRESHOLDS))
     # TODO income potential
     return "".join(rec)
@@ -642,7 +760,10 @@ def build_planet_reports(game):
     prev = {}
     planet_reports = []
     for turn_id in range(1, maxturn):
-        turns = {player.player_id: game.turns(player.player_id).get(turn_id, None) for player in game.players.values()}
+        turns = {
+            player.player_id: game.turns(player.player_id).get(turn_id, None)
+            for player in game.players.values()
+        }
         owned = {}
         unowned = {}
         for owner_id in turns:
@@ -650,14 +771,17 @@ def build_planet_reports(game):
             if turn is None:
                 continue
             for p in turn.planets():
-                planet_id = p['id']
-                if planet_id in owned or p['temp'] == -1:
+                planet_id = p["id"]
+                if planet_id in owned or p["temp"] == -1:
                     continue
-                if p['ownerid'] == owner_id:
+                if p["ownerid"] == owner_id:
                     owned[planet_id] = p
                     if planet_id in unowned:
                         unowned.pop(planet_id)
-                elif planet_id not in unowned or unowned[planet_id]['infoturn'] < p['infoturn']:
+                elif (
+                    planet_id not in unowned
+                    or unowned[planet_id]["infoturn"] < p["infoturn"]
+                ):
                     unowned[planet_id] = p
                 else:
                     continue
@@ -671,19 +795,18 @@ def build_planet_reports(game):
             rec = build_planet_report(planet)
             if planet_id not in first:
                 first[planet_id] = rec
-                prev[planet_id] = rec        
+                prev[planet_id] = rec
                 continue
             if planet_id in prev and prev[planet_id] == rec:
                 continue
             report[planet_id] = rec
-            prev[planet_id] = rec        
+            prev[planet_id] = rec
         planet_reports.append(report)
     planet_reports[0] = first
     return planet_reports
 
 
-def build_econreport(game: vgap.Game) -> dict[str,list[dict[int,str]]]:
-    maxturn = max(game.turns().keys())
+def build_econreport(game: vgap.Game) -> dict[str, list[dict[int, str]]]:
     econreport = {"planets": build_planet_reports(game), "players": []}
     return econreport
 
@@ -709,8 +832,10 @@ def write_econreport(game: vgap.Game, output_path: str) -> None:
 
 
 def build_minefield_report(game):
-    data = [":".join([str(rec) for rec in recs.values()]) 
-            for recs in minefields.build_minefields(game).values()]
+    data = [
+        ":".join([str(rec) for rec in recs.values()])
+        for recs in minefields.build_minefields(game).values()
+    ]
     return {"minefields": data}
 
 
