@@ -619,7 +619,6 @@ def write_messagelist(game: vgap.Game, output_path: str) -> None:
 CLAN_THRESHOLDS = [
     0,
     1,
-    2,
     5,
     10,
     20,
@@ -629,18 +628,18 @@ CLAN_THRESHOLDS = [
     80,
     90,
     100,
+    150,
     200,
+    300,
     500,
-    600,
     700,
-    800,
     900,
     1_000,
+    1_500,
     2_000,
+    3_000,
     5_000,
-    6_000,
     7_000,
-    8_000,
     9_000,
     10_000,
     20_000,
@@ -661,15 +660,16 @@ THRESHOLDS = [
     2,
     5,
     10,
+    15,
     20,
     30,
-    40,
     50,
     60,
     70,
     80,
     90,
     100,
+    150,
     200,
     300,
     400,
@@ -679,15 +679,14 @@ THRESHOLDS = [
     800,
     900,
     1000,
+    1500,
     2000,
     3000,
-    4000,
     5000,
-    6000,
     7000,
-    8000,
     9000,
     10_000,
+    15_000,
     20_000,
     30_000,
     40_000,
@@ -697,7 +696,10 @@ THRESHOLDS = [
 TEMP_THRESHOLDS = [
     0,
     1,
+    2,
+    4,
     5,
+    7,
     10,
     15,
     20,
@@ -712,15 +714,119 @@ TEMP_THRESHOLDS = [
     80,
     85,
     90,
+    93,
     95,
+    96,
+    97,
+    98,
     99,
     100,
 ]
 
+TAX_THRESHOLDS = [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    17,
+    20,
+    22,
+    25,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90,
+    100,
+]
 
-def bucket_value(value: int, thresholds) -> str:
+STRUCTURE_THRESHOLDS = [
+    0,
+    1,
+    2,
+    5,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90,
+    100,
+    110,
+    120,
+    130,
+    140,
+    150,
+    160,
+    180,
+    200,
+    225,
+    250,
+    275,
+    300,
+    350,
+    400,
+    450,
+    500,
+]
+
+DECIMAL_THRESHOLDS = list(range(36))
+
+THRESHOLD_TYPES = {
+    "TT": TEMP_THRESHOLDS,
+    "TX": TAX_THRESHOLDS,
+    "D": DECIMAL_THRESHOLDS,
+    "CT": CLAN_THRESHOLDS,
+    "ST": STRUCTURE_THRESHOLDS,
+    "T": THRESHOLDS,
+}
+
+PLANET_REPORT_KEYS = {
+    "temp": "TT",
+    "colonisttaxrate": "TX",
+    "nativetaxrate": "TX",
+    "nativetype": "D",
+    "nativegovernment": "D",
+    "nativeclans": "CT",
+    "clans": "CT",
+    "mines": "ST",
+    "factories": "ST",
+    "defense": "ST",
+    "megacredits": "T",
+    "supplies": "T",
+    "neutronium": "T",
+    "duranium": "T",
+    "tritanium": "T",
+    "molybdenum": "T",
+    "groundneutronium": "T",
+    "groundduranium": "T",
+    "groundtritanium": "T",
+    "groundmolybdenum": "T",
+}
+
+
+def encode_value(value: int, thresholds_type: str) -> str:
     if value <= 0:
         return BASE36[0]
+    thresholds = THRESHOLD_TYPES[thresholds_type]
+    assert len(thresholds) <= 36
     prev = thresholds[0]
     for i, bound in enumerate(thresholds):
         if value <= bound:
@@ -731,26 +837,22 @@ def bucket_value(value: int, thresholds) -> str:
     return BASE36[-1]
 
 
+def decode_value(char: str, thresholds: list[int]) -> int:
+    """Decode a single base36 character to a threshold value."""
+    idx = int(char, 36)
+    return thresholds[idx]
+
+
 def build_planet_report(planet):
-    rec = [bucket_value(planet["temp"], TEMP_THRESHOLDS)]
-    rec.append(str(planet["nativetype"]))
-    rec.append(str(planet["nativegovernment"]))
-    for key in ["nativeclans", "clans"]:
-        rec.append(bucket_value(planet[key], CLAN_THRESHOLDS))
-    rec.append(bucket_value(planet["megacredits"] + planet["supplies"], THRESHOLDS))
-    for key in [
-        "neutronium",
-        "molybdenum",
-        "duranium",
-        "tritanium",
-        "groundneutronium",
-        "groundmolybdenum",
-        "groundduranium",
-        "groundtritanium",
-    ]:
-        rec.append(bucket_value(planet[key], THRESHOLDS))
-    # TODO income potential
-    return "".join(rec)
+    rec = [encode_value(planet[key], tt) for key, tt in PLANET_REPORT_KEYS.items()]
+    return "".join(rec).upper()
+
+
+def unpack_planet_report(report):
+    items = ((idx, key, tt) for idx, (key, tt) in enumerate(PLANET_REPORT_KEYS.items()))
+    return {
+        key: decode_value(report[idx], THRESHOLD_TYPES[tt]) for idx, key, tt in items
+    }
 
 
 def build_planet_reports(game):

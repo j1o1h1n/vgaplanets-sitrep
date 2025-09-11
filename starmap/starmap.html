@@ -403,21 +403,45 @@ const RESOURCE_COLOURS = {
   'megacredits': "#ECCB60",
 }
 
-const CLAN_THRESHOLDS = [0, 1, 2, 5, 
-                   10, 20, 50, 60, 70, 80, 90,
-                   100, 200, 500, 600, 700, 800, 900,
-                   1_000, 2_000, 5_000, 6_000, 7_000, 8_000, 9_000,
-                   10_000, 20_000, 30_000, 40_000, 50_000,
-                   60_000, 70_000, 80_000, 90_000, 100_000,
-                   200_000]
+const THRESHOLDS = {
+  "TT": [0, 1, 2, 4, 5, 7, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 75, 80, 85,
+    90, 93, 95, 96, 97, 98, 99, 100],
+  "TX": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 20, 22, 25,
+    30, 40, 50, 60, 70, 80, 90, 100],
+  "D": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+    20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35],
+  "CT": [0, 1, 5, 10, 20, 50, 60, 70, 80, 90, 100, 150, 200, 300, 500, 700, 900,
+    1000, 1500, 2000, 3000, 5000, 7000, 9000, 10000, 20000, 30000, 40000, 50000,
+    60000, 70000, 80000, 90000, 100000, 200000],
+  "ST": [0, 1, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140,
+    150, 160, 180, 200, 225, 250, 275, 300, 350, 400, 450, 500],
+  "T": [0, 1, 2, 5, 10, 15, 20, 30, 50, 60, 70, 80, 90, 100, 150, 200, 300, 400,
+    500, 600, 700, 800, 900, 1000, 1500, 2000, 3000, 5000, 7000, 9000, 10000,
+    15000, 20000, 30000, 40000, 50000]
+}
 
-const THRESHOLDS = [0, 1, 2, 5,
-              10, 20, 30, 40, 50, 60, 70, 80, 90,
-              100, 200, 300, 400, 500, 600, 700, 800, 900,
-              1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000,
-              10_000, 20_000, 30_000, 40_000, 50_000]
-
-const TEMP_THRESHOLDS = [0, 1, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 75, 80, 85, 90, 95, 99, 100]
+PLANET_REPORT_KEYS = {
+    "temp": "TT",
+    "colonisttaxrate": "TX",
+    "nativetaxrate": "TX",
+    "nativetype": "D",
+    "nativegovernment": "D",
+    "nativeclans": "CT",
+    "clans": "CT",
+    "mines": "ST",
+    "factories": "ST",
+    "defense": "ST",
+    "megacredits": "T",
+    "supplies": "T",
+    "neutronium": "T",
+    "duranium": "T",
+    "tritanium": "T",
+    "molybdenum": "T",
+    "groundneutronium": "T",
+    "groundduranium": "T",
+    "groundtritanium": "T",
+    "groundmolybdenum": "T",
+}
 
 const canvas = document.getElementById('starmap');
 const ctx = canvas.getContext('2d');
@@ -891,34 +915,40 @@ function drawStarCluster(ctx, x, y, star) {
 
 /* --- infobox functions --- */
 
-function tval(val, thresholds) {
+function decode_value(key, val) {
+  /** map the base 36 encoded character to approximate value */
+  const thresholds = THRESHOLDS[PLANET_REPORT_KEYS[key]];
   return thresholds[parseInt(val, 36)];
 }
 
-function nval(val, names) {
-  return names[val];
-}
-
 function buildEcon(econrec) {
-  const [temp, nativetype, nativegovernment, nativeclans, clans, megacredits, neutronium, molybdenum, duranium, tritanium, groundneutronium, groundmolybdenum, groundduranium, groundtritanium] = econrec;
-  return {
-    temp:             tval(temp, TEMP_THRESHOLDS),
-    tempColor:        tval(temp, TEMP_COLOURS),
-    nativeRace:       nval(nativetype, NATIVES),
-    nativeColor:      nval(nativetype, NATIVE_COLORS),
-    government:       nval(nativegovernment, GOVT),
-    nativeClans:      tval(nativeclans, CLAN_THRESHOLDS),
-    clans:            tval(clans, CLAN_THRESHOLDS),
-    megacredits:      tval(megacredits, THRESHOLDS),
-    neutronium:       tval(neutronium, THRESHOLDS),
-    molybdenum:       tval(molybdenum, THRESHOLDS),
-    duranium:         tval(duranium, THRESHOLDS),
-    tritanium:        tval(tritanium, THRESHOLDS),
-    groundneutronium: tval(groundneutronium, THRESHOLDS),
-    groundmolybdenum: tval(groundmolybdenum, THRESHOLDS),
-    groundduranium:   tval(groundduranium, THRESHOLDS),
-    groundtritanium:  tval(groundtritanium, THRESHOLDS)
+  const [temp, colonisttaxrate, nativetaxrate, nativetype, nativegovernment, nativeclans, clans, mines, factories, defense, megacredits, supplies, neutronium, duranium, tritanium, molybdenum, groundneutronium, groundduranium, groundtritanium, groundmolybdenum] = econrec;
+  let rec = {
+    temp: decode_value("temp", temp),
+    colonisttaxrate: decode_value("colonisttaxrate", colonisttaxrate),
+    nativetaxrate: decode_value("nativetaxrate", nativetaxrate),
+    nativetype: decode_value("nativetype", nativetype),
+    nativegovernment: decode_value("nativegovernment", nativegovernment),
+    nativeclans: decode_value("nativeclans", nativeclans),
+    clans: decode_value("clans", clans),
+    mines: decode_value("mines", mines),
+    factories: decode_value("factories", factories),
+    defense: decode_value("defense", defense),
+    megacredits: decode_value("megacredits", megacredits),
+    supplies: decode_value("supplies", supplies),
+    neutronium: decode_value("neutronium", neutronium),
+    duranium: decode_value("duranium", duranium),
+    tritanium: decode_value("tritanium", tritanium),
+    molybdenum: decode_value("molybdenum", molybdenum),
+    groundneutronium: decode_value("groundneutronium", groundneutronium),
+    groundduranium: decode_value("groundduranium", groundduranium),
+    groundtritanium: decode_value("groundtritanium", groundtritanium),
+    groundmolybdenum: decode_value("groundmolybdenum", groundmolybdenum)
   };
+  rec.nativecolor = NATIVE_COLORS[rec.nativetype];
+  rec.nativegovernment = GOVT[rec.nativegovernment];
+  rec.nativetype = NATIVES[rec.nativetype];
+  return rec;
 }
 
 /**
@@ -1108,12 +1138,12 @@ function updateInfoBoxPlanet(targetPlanetId) {
     ctx.fillText('⨁', size - 8, 28);
   }
 
-  if (econ.nativeRace) {
+  if (econ.nativetype) {
     ctx.textAlign     = 'rights';
     ctx.textBaseline  = 'middle';
-    ctx.fillStyle     = econ.nativeColor;
-    ctx.fillText(`${econ.government} ${econ.nativeRace}`, size - 6, size - 10);
-    drawPopn(ctx, size - 6, size - 20, econ.nativeClans, econ.nativeColor, true);
+    ctx.fillStyle     = econ.nativecolor;
+    ctx.fillText(`${econ.nativegovernment} ${econ.nativetype}`, size - 6, size - 10);
+    drawPopn(ctx, size - 6, size - 20, econ.nativeclans, econ.nativecolor, true);
   }
 
   if (ownerid) {
