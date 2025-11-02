@@ -688,7 +688,9 @@ function getColor(ownerid) {
 function updateTurn(turnId) {
   currentTurnId = turnId;
   planetOwner = getPlanetOwners(currentTurnId)
-  starbaseSet = new Set(starmapData.starbases[currentTurnId - 1] || []);
+  starbaseSet = new Set(
+    Object.keys(starmapData.starbases[currentTurnId - 1] || {}).map(Number)
+  );
   document.getElementById("turnLabel").textContent = turnId;
   drawMap();
   updateNewsPanel(turnId);
@@ -1089,7 +1091,9 @@ function updateInfoBoxPlanet(targetPlanetId) {
   const header = document.querySelector('#infoBox .header');
   const footer = document.querySelector('#infoBox .footer');
   const planet = starmapData.planets.find(p => p.id === targetPlanetId);
-  const starbaseSet = new Set(starmapData.starbases[currentTurnId - 1] || []);
+  const starbaseSet = new Set(
+    Object.keys(starmapData.starbases[currentTurnId - 1] || {}).map(Number)
+  );
   let starbase = starbaseSet.has(targetPlanetId)
   if (!planet) {
     return;

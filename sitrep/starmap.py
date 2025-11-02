@@ -245,7 +245,7 @@ def build_starmap(game: vgap.Game) -> dict[str, Any]:
         turns = game.turns(player_id)
         for turn_id in range(1, maxturn):
             if turn_id not in turninfo:
-                turninfo[turn_id] = {"planet_owner": {}, "starbases": set()}
+                turninfo[turn_id] = {"planet_owner": {}, "starbases": {}}
             if turn_id not in turns:
                 missing.add(turn_id)
                 continue
@@ -255,7 +255,9 @@ def build_starmap(game: vgap.Game) -> dict[str, Any]:
             for planet in turn.planets(player_id):
                 turninfo[turn.turn_id]["planet_owner"][planet["id"]] = player_id
             for sb in turn.starbases(player_id):
-                turninfo[turn.turn_id]["starbases"].add(int(sb["planetid"]))
+                sb_id = int(sb["planetid"])
+                rec = build_starbase_report(sb)
+                turninfo[turn.turn_id]["starbases"][sb_id] = rec
 
     for turn_id in missing:
         turninfo[turn_id] = turninfo[turn_id - 1]
@@ -267,7 +269,7 @@ def build_starmap(game: vgap.Game) -> dict[str, Any]:
         return "".join(ALPHANUM[owners.get(p, 0)] for p in planet_ids)
 
     planet_owners = [encode(turninfo[t]["planet_owner"]) for t in turninfo]
-    starbases = [list(turninfo[t]["starbases"]) for t in turninfo]
+    starbases = [turninfo[t]["starbases"] for t in turninfo]
 
     # starclusters
     starclusters = game.turns()[1].data["stars"]
@@ -822,6 +824,16 @@ PLANET_REPORT_KEYS = {
 }
 
 
+STARBASE_REPORT_KEYS = {
+    "enginetechlevel": "D",
+    "hulltechlevel": "D",
+    "beamtechlevel": "D",
+    "torptechlevel": "D",
+    "defense": "ST",
+    "fighters": "ST",
+}
+
+
 def encode_value(value: int, thresholds_type: str) -> str:
     if value <= 0:
         return BASE36[0]
@@ -850,6 +862,20 @@ def build_planet_report(planet):
 
 def unpack_planet_report(report):
     items = ((idx, key, tt) for idx, (key, tt) in enumerate(PLANET_REPORT_KEYS.items()))
+    return {
+        key: decode_value(report[idx], THRESHOLD_TYPES[tt]) for idx, key, tt in items
+    }
+
+
+def build_starbase_report(starbase):
+    rec = [encode_value(starbase[key], tt) for key, tt in STARBASE_REPORT_KEYS.items()]
+    return "".join(rec).upper()
+
+
+def unpack_starbase_report(report):
+    items = (
+        (idx, key, tt) for idx, (key, tt) in enumerate(STARBASE_REPORT_KEYS.items())
+    )
     return {
         key: decode_value(report[idx], THRESHOLD_TYPES[tt]) for idx, key, tt in items
     }

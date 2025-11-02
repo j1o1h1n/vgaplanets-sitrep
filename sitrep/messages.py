@@ -57,3 +57,27 @@ def combat_results(turn):
             case _:
                 print(f"case fallthrough: {data['action']}")
     return results
+
+
+def is_glory(record: dict) -> bool:
+    return record["messagetype"] in (8, 9) and "shockwave" in record["body"]
+
+
+def parse_glory(record: dict) -> dict:
+    """
+    Extract (x, y, ship_id, damage) from a distress record like:
+      {'headline': 'GBB Sporocyst ID#368', 'body': '... AT: ( 2342 , 1965 ) ... Damage is at 24%', ...}
+    """
+    # ship_id from headline
+    m_id = re.search(r"ID#(\d+)", record.get("headline", ""))
+    # coordinates
+    m_xy = re.search(r"AT:\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)", record.get("body", ""))
+    # damage percentage
+    m_dmg = re.search(r"Damage is at (\d+)%", record.get("body", ""))
+
+    return {
+        "x": int(m_xy.group(1)) if m_xy else None,
+        "y": int(m_xy.group(2)) if m_xy else None,
+        "ship_id": int(m_id.group(1)) if m_id else None,
+        "damage": int(m_dmg.group(1)) if m_dmg else None,
+    }

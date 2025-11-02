@@ -329,12 +329,13 @@ def build_report(game: Game, player_id: int) -> list[list[str | int]]:
 
 def get_diplomacy_color(turn: Turn, player_id: int) -> RGB:
     """Get the colour set in the Planets Nu diplomacy tab"""
-    return (
-        "#"
-        + query_one(turn.data["relations"], lambda rel: rel["playertoid"] == player_id)[
-            "color"
-        ]
-    )
+    if turn.player_id == player_id:
+        return "#CCEEFF"
+    relations = turn.data["relations"]
+    result = query_one(relations, lambda rel: rel["playertoid"] == player_id)
+    if result is None:
+        return "#AAAAAA"
+    return f"#{result["color"]}"
 
 
 def shade(hex_color: RGB, percent: float = -0.1) -> RGB:

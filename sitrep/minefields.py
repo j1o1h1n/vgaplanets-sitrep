@@ -36,6 +36,19 @@ class Point(typing.NamedTuple):
     y: int
 
 
+def lookup_player_id(game, target_name, target_race):
+    for pid, player in game.players.items():
+        if player.name == target_name and player.adjective == target_race:
+            return pid
+
+    # fallback: match on name OR adjective if exact match fails
+    for pid, player in game.players.items():
+        if player.name == target_name or player.adjective == target_race:
+            return pid
+
+    return None
+
+
 class Minefield:
     # TODO adjust for robots
     def __init__(
@@ -128,6 +141,13 @@ def is_scan_enemy_mines(m):
     return (
         m["messagetype"] == 19
         and "We are scanning for mines.  Enemy Mine field detected" in m["body"]
+    )
+
+
+def is_safe_passage(m):
+    return (
+        m["messagetype"] == 19
+        and "has granted us safe passage through these mines" in m["body"]
     )
 
 
@@ -234,7 +254,10 @@ def sanity_check_destroy(game, turn_id, minefields, scanned):
     prev_turn = turn_id - 1
     sweeps = {}
     for player_id in game.players:
-        turn = game.turns(player_id)[prev_turn]
+        turns = game.turns(player_id)
+        if prev_turn not in turns:
+            continue
+        turn = turns[prev_turn]
         sweeps.update(
             {
                 ship["id"]: Point(ship["x"], ship["y"])

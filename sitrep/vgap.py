@@ -81,6 +81,10 @@ JSON_EXTRACT(data, '$.status') status
 from games where status = 2"""
 
 
+def xdict(recs: list[dict[str, Any]], keys: list[str]) -> list[dict[str, Any]]:
+    return [{k: r[k] for k in keys} for r in recs]
+
+
 def query_one(items, filter_func):
     for item in items:
         if filter_func(item):
@@ -303,10 +307,7 @@ class Game:
         self._turns = turns
         self.last_turn = self.data["turn"]
 
-        p, *_ = self._turns.keys()
-        model_turn = self._turns.get(p, {}).get(1)
-        if not model_turn:
-            return
+        model_turn = self.model_turn()
         races = model_turn.data["races"]
         self.races = {r["id"]: r for r in races}
         players = model_turn.data["players"]
@@ -327,6 +328,19 @@ class Game:
         if 0 in self.players:
             del self.players[0]
 
+    def model_turn(self) -> Turn:
+        player_id = list(self._turns.keys())[0]
+        for turn_id in range(1, 11):
+            try:
+                turn = self.turn(turn_id=turn_id, player_id=player_id)
+            except KeyError:
+                continue
+            open_users = [p["username"] == "open" for p in turn.data["players"]]
+            if any(open_users):
+                continue
+            return turn
+        raise ValueError("model turn not found in first ten turns")
+
     def __repr__(self):
         return f"<Game {self.game_id}-{self.name}-T{self.last_turn}>"
 
@@ -345,6 +359,8 @@ class Game:
         """Return the turns for the given player"""
         if player_id is None:
             player_id = self.meta["player_id"]
+        if player_id not in self._turns:
+            return {}
         return {
             turn_id: self._turns[player_id][turn_id]
             for turn_id in self._turns[player_id]

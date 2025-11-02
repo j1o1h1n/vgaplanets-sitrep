@@ -41,7 +41,7 @@ Population (natives) and Income.
 Below the graph are buttons that will take you to individual report pages.  The available
 reports are:
 
-* MilInt - Information similar to what is available on the in-game Scoreboard
+* Intel - Information similar to what is available on the in-game Scoreboard
 * Econ - Resource levels at each planet, grouped by star-base
 * FreightTrac - Enemy freighter locations, with options to copy, export as in-game diagram
 * MsgLog - In game messages, for all turns
@@ -57,8 +57,8 @@ User ctrl+q to quit.
 
 """
 
-MILINT = """
-# MilInt Report
+INTEL = """
+# Intel Report
 
 This report shows the information about a players military score, capital 
 ships, freighters and starbases, similar to what can be seen on the in-game 
