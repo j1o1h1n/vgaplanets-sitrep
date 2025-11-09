@@ -1,5 +1,6 @@
 import math
 import logging
+import re
 
 from textual.app import ComposeResult
 from textual.screen import Screen
@@ -16,8 +17,10 @@ from rich.text import Text
 
 from . import vgap
 from . import helpdoc
+from . import starmap_view
 
 from .widgets import rule
+
 
 from collections import defaultdict
 
@@ -138,6 +141,7 @@ class EconReportTableScreen(Screen):
         ("[", "prev_turn", "Prev Turn"),
         ("space", "current_turn", "Current Turn"),
         ("]", "next_turn", "Next Turn"),
+        ("m", "toggle_map_panel", "Starmap"),
     ]
 
     def __init__(self, game, *args, race="", **kwargs):
@@ -147,6 +151,7 @@ class EconReportTableScreen(Screen):
         self.game = game
         self.turn = self.game.turn()
         self.expanded = defaultdict(bool)
+        self._map_open = False
 
     def on_screen_resume(self):
         self.app.update_help(helpdoc.ECON)
@@ -208,6 +213,13 @@ class EconReportTableScreen(Screen):
             return table
 
         yield Header()
+
+        yield Container(
+            starmap_view.StarmapContainer(self.game, id="starmap_view"),
+            id="map_panel",
+            classes="-hidden",
+        )
+
         with Container():
             with Horizontal(classes="rightrow"):
                 turn_title = f"▥▥ Turn {self.turn.turn_id} ▥▥"
@@ -246,6 +258,15 @@ class EconReportTableScreen(Screen):
 
         yield Footer()
 
+    def action_toggle_map_panel(self) -> None:
+        """Slide the map panel in/out by toggling its hidden class."""
+        panel = self.query_one("#map_panel", Container)
+        panel.toggle_class("-hidden")
+        self._map_open = not self._map_open
+        # When opening, focus the map so WASD / +/- work immediately.
+        if self._map_open:
+            self.query_one("#starmap_view").focus()
+
     def action_copy_data(self):
         self.app.copy_to_clipboard(self.table_text)
 
@@ -253,3 +274,28 @@ class EconReportTableScreen(Screen):
     def on_toggled(self, target: Collapsible.Toggled):
         target_id, target_state = target.collapsible.id, target.collapsible.collapsed
         self.expanded[target_id] = not target_state
+
+    @on(DataTable.CellSelected)
+    def on_cell_selected(self, event: DataTable.CellSelected):
+        # CellSelected(value=<text '⨁ P122-Hypoguria' [Span(0, 1, '#88abfd'), Span(1, 16, '#88abfd')] ''>, coordinate=Coordinate(row=2, column=0), cell_key=CellKey(row_key=<textual.widgets._data_table.RowKey object at 0x14956c380>, column_key=<textual.widgets._data_table.ColumnKey object at 0x14956f170>))
+        text = event.value
+        plain = text.plain if hasattr(text, "plain") else str(text)
+
+        mo = re.search(r"\bP(\d+)\b", plain)
+        planet_id = None
+        if mo:
+            planet_id = int(mo.group(1))
+
+        self.app.log(
+            f"selected: {plain} - P{planet_id if planet_id is not None else 'n/a'}"
+        )
+        if planet_id is not None:
+            if not self._map_open:
+                self.action_toggle_map_panel()
+
+            # ask the starmap to center on that planet
+            starmap = self.query_one(starmap_view.StarmapWidget)
+            planets = self.game.turn().data["planets"]
+            planet = query_one(planets, lambda p: p["id"] == planet_id)
+            starmap.set_center(planet)
+            starmap.focus()

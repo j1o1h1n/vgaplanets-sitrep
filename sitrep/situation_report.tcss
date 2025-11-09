@@ -238,3 +238,21 @@ HelpModal > VerticalScroll > MarkdownViewer {
     padding: 2 2;
 }
 
+/* starmap panel */
+#map_panel {
+  layer: overlay;
+  dock: right;
+  width: 130;                 /* columns */
+  height: 1fr;               /* fill between header/footer */
+  background: #0F2024;       /* near-black */
+  border: heavy #C67825;
+  padding: 1 2;
+  content-align: left top;
+  margin: 0;
+  offset: 0 0;               /* visible position */
+  transition: offset 0.4s in_out_quart;
+}
+
+#map_panel.-hidden {
+  offset: 130 0;             /* hidden off-screen to the left */
+}

@@ -1,6 +1,5 @@
 from textual import on
 from textual.app import App, ComposeResult
-from textual.events import Click
 from textual.containers import Container, VerticalScroll, Center, Horizontal, Vertical
 from textual.screen import Screen, ModalScreen
 from textual.widgets import (
@@ -29,6 +28,7 @@ from . import helpdoc
 from . import econrep
 from . import msglog
 from . import freighters
+from . import starmap_view
 
 # from . import milint
 from . import graph
@@ -230,176 +230,6 @@ class HelpModal(ModalScreen):
         self.app.pop_screen()
 
 
-class StarMapScreen(Screen):
-    """ASCII starmap viewer centered on the flagged planet."""
-
-    BINDINGS = [
-        ("escape", "pop_screen", "Back"),
-        ("c", "center", "Center on HW"),
-        ("+", "zoom_in", "Zoom In"),
-        ("=", "zoom_in", "Zoom In"),
-        ("-", "zoom_out", "Zoom Out"),
-        ("w", "pan_up", "Up"),
-        ("a", "pan_left", "Left"),
-        ("s", "pan_down", "Down"),
-        ("d", "pan_right", "Right"),
-    ]
-
-    def __init__(self, game: vgap.Game, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.game = game
-        self.scale = 4.0  # start more zoomed-in (smaller ly-per-cell)
-        self.center_xy: tuple = ()  # (cx, cy) in world coords
-        self._cell_index: dict[tuple[int, int], int] = {}
-
-    def compose(self) -> ComposeResult:
-        yield Header()
-        starmap = Static(id="starmap")
-        yield starmap
-        yield Footer()
-
-    def on_mount(self) -> None:
-        starmap = self.query_one("#starmap", Static)
-        # Fill all available space and hide overflow.
-        starmap.styles.width = "100%"
-        starmap.styles.height = "1fr"
-        # starmap.styles.overflow = "hidden"
-        # Near-black background for the starfield
-        starmap.styles.background = "#050505"
-
-    def on_ready(self) -> None:
-        # First real render happens after initial layout
-        self.redraw()
-
-    def redraw(self) -> None:
-        self.query_one("#starmap", Static).update(self.render_map())
-
-    def on_resize(self) -> None:
-        # Recompute viewport-dimension-based grid on any resize.
-        self.redraw()
-        starmap = self.query_one("#starmap", Static)
-        cols = starmap.size.width or self.size.width or 80
-        rows = starmap.size.height or (self.size.height - 2) or 24  # header+footer
-        cols = max(10, cols)
-        rows = max(5, rows)
-
-    def _ensure_center(self, turn) -> None:
-        if self.center_xy:
-            return
-        planets = turn.data["planets"]
-        center = query_one(planets, lambda p: p["flag"] == 1) or planets[0]
-        self.center_xy = (int(center["x"]), int(center["y"]))
-
-    def render_map(self) -> Text:
-        turn = self.game.turn()
-        self._ensure_center(turn)
-        cx, cy = self.center_xy
-        planets = turn.data["planets"]
-        starbases = turn.data["starbases"]
-        planets_with_starbase = {s["planetid"] for s in starbases}
-        # Determine viewport size from the widget so we truly fill it.
-        starmap = self.query_one("#starmap", Static)
-        cols = max(10, starmap.size.width)
-        rows = max(5, starmap.size.height)
-        # Two columns per logical cell horizontally
-        width_cells = max(5, cols // 2)
-        height_cells = max(3, rows)
-        radius_x = width_cells // 2
-        radius_y = height_cells // 2
-        scale = self.scale  # ly per logical cell
-        width = width_cells * 2
-        height = height_cells
-
-        # build double-width grid
-        grid: list[list[tuple[str, str | None]]]
-        grid = [[(" ", None) for _ in range(width)] for _ in range(height)]
-        self._cell_index.clear()
-
-        def plot(
-            planet_id: int, dx: int, dy: int, left: str, right: str, style: str | None
-        ):
-            x = int(radius_x * 2 + dx * 2)
-            y = int(radius_y - dy)
-            if 0 <= y < height and 0 <= x + 1 < width:
-                grid[y][x] = (left, style)
-                grid[y][x + 1] = (right, style)
-                self._cell_index[(x, y)] = planet_id
-                self._cell_index[(x + 1, y)] = planet_id
-
-        for p in planets:
-            dx = int((p["x"] - cx) / scale)
-            dy = int((p["y"] - cy) / scale)
-            if abs(dx) <= radius_x and abs(dy) <= radius_y:
-                planet_id = int(p["id"])
-                ownerid = int(p.get("ownerid", 0))
-                color = freighters.get_diplomacy_color(turn, ownerid)
-                sb = "𜹐" if p["id"] in planets_with_starbase else " "
-                plot(planet_id, dx, dy, "🮮", sb, color)
-
-        out = Text()
-        for y in range(height):
-            if y:
-                out.append("\n")
-            for ch, style in grid[y]:
-                out.append(ch, style=style) if style else out.append(ch)
-        return out
-
-    def on_click(self, event: Click) -> None:
-        # Only act on clicks inside the starmap widget
-        if getattr(event.widget, "id", None) != "starmap":
-            return
-        x, y = event.x, event.y
-        planet_id = self._cell_index.get((x, y), -1)
-        planets = self.game.turn().data["planets"]
-        planet = query_one(planets, lambda p: p["id"] == planet_id)
-        if planet:
-            self.app.log(f"click {planet['x']},{planet['y']}: {planet['name']}")
-        else:
-            self.app.log(f"nothing found at {x}, {y}")
-
-    # --- Panning with WASD / Arrow keys (world units = ly) ---
-    def _pan(self, dx_cells: int, dy_cells: int) -> None:
-        if self.center_xy is None:
-            return
-        step = 8  # how many logical cells per keypress
-        cx, cy = self.center_xy
-        self.center_xy = (
-            int(cx + dx_cells * step * self.scale),
-            int(cy + dy_cells * step * self.scale),
-        )
-        self.redraw()
-
-    def action_center(self) -> None:
-        self.center_xy = ()
-        self.scale = 4.0
-        self._ensure_center(self.game.turn())
-        self.redraw()
-
-    def action_pan_left(self) -> None:
-        self._pan(-1, 0)
-
-    def action_pan_right(self) -> None:
-        self._pan(1, 0)
-
-    def action_pan_up(self) -> None:
-        self._pan(0, 1)
-
-    def action_pan_down(self) -> None:
-        self._pan(0, -1)
-
-    def action_zoom_in(self) -> None:
-        # smaller ly-per-cell => closer
-        self.scale = max(1.0, self.scale * 0.8)
-        self.redraw()
-
-    def action_zoom_out(self) -> None:
-        self.scale = min(50.0, self.scale * 1.25)
-        self.redraw()
-
-    def action_pop_screen(self):
-        self.app.pop_screen()
-
-
 class ReportScreen(Screen):
 
     BINDINGS = [
@@ -407,7 +237,7 @@ class ReportScreen(Screen):
         ("[", "previous_graph", "Previous graph"),
         ("]", "next_graph", "Next graph"),
         ("t", "next_theme", "Next theme"),
-        ("m", "starmap", "StarMap"),
+        ("m", "starmap", "Starmap"),
     ]
 
     THEMES = [
@@ -459,7 +289,7 @@ class ReportScreen(Screen):
         self.app.update_help(helpdoc.MAIN)
 
     def action_starmap(self):
-        self.app.push_screen(StarMapScreen(self.game))
+        self.app.push_screen(starmap_view.StarmapScreen(self.game))
 
     @on(Button.Pressed)
     def report_pressed(self, event: Button.Pressed) -> None:
@@ -608,7 +438,7 @@ class SituationReport(App):
         self.help_text = help_text
 
     async def on_mount(self):
-        if self.planets_db.requires_update():
+        if False and self.planets_db.requires_update():
             self.run_worker(self.handle_update_games(), exclusive=True)
             self.push_screen(LoadingScreen())
         else:
